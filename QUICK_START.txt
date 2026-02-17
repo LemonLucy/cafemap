@@ -1,0 +1,37 @@
+╔══════════════════════════════════════════════════════════════╗
+║           VENUE - PUSH TO GITHUB QUICK GUIDE                 ║
+╔══════════════════════════════════════════════════════════════╗
+
+✅ CREDENTIALS ARE SECURED
+   - config.js (ignored)
+   - .env (ignored)
+   - venue.db (ignored)
+
+📋 PUSH TO GITHUB IN 3 STEPS:
+
+1. CREATE REPO on GitHub
+   → https://github.com/new
+   → Name it (e.g., "venue-cafe-finder")
+   → Don't initialize with README
+   → Click "Create repository"
+
+2. RUN THESE COMMANDS:
+   cd /home/lucy/Q/coffeemap
+   git commit -m "Initial commit: Venue cafe finder app"
+   git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
+   git branch -M main
+   git push -u origin main
+
+3. VERIFY on GitHub:
+   ❌ config.js should NOT be visible
+   ❌ .env should NOT be visible
+   ✅ README.md should be visible
+   ✅ Source code should be visible
+
+📚 DETAILED DOCS:
+   - GITHUB_PUSH.md (step-by-step instructions)
+   - SECURITY_SUMMARY.md (what's protected)
+   - README.md (project setup for others)
+
+🔑 YOUR KEYS ARE SAFE!
+   They're stored locally only, not in git.

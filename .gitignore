@@ -13,6 +13,9 @@ __pycache__/
 *.log
 server.log
 
+# Archive/Old files
+archive/
+
 # OS
 .DS_Store
 Thumbs.db

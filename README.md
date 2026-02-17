@@ -59,10 +59,14 @@ python3 app_server.py
 ## Project Structure
 ```
 coffeemap/
-├── index.html          # Main frontend
-├── app_server.py       # Backend server
+├── index.html          # Main frontend UI
+├── app_server.py       # Backend server (main)
 ├── database.py         # Database operations
-├── config.js           # API keys (not in git)
+├── config.js           # Frontend API key (not in git)
 ├── config.example.js   # Config template
-└── venue.db           # SQLite database
+├── .env                # Backend API keys (not in git)
+├── .env.example        # Env template
+├── start.sh            # Startup script
+├── venue.db            # SQLite database (not in git)
+└── README.md           # This file
 ```
