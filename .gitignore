@@ -1,0 +1,23 @@
+# API Keys and Secrets
+config.js
+.env
+
+# Database
+*.db
+venue.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.log
+server.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

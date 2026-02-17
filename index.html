@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Venue - Cafe Finder</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; overflow: hidden; }
+        
+        .filter-bar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 1000;
+        }
+        
+        .filter-chips {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .chip {
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            color: #666;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        
+        .chip:hover { border-color: #4CAF50; }
+        .chip.selected { background: #4CAF50; border-color: #4CAF50; color: white; }
+        
+        #map { width: 100%; height: 100vh; }
+        
+        .sidebar {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 380px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+            z-index: 999;
+            overflow-y: auto;
+            transition: transform 0.3s;
+        }
+        
+        .sidebar.collapsed { transform: translateX(100%); }
+        
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 1;
+        }
+        
+        .sidebar-title { font-size: 18px; font-weight: 600; color: #222; }
+        .sidebar-count { font-size: 13px; color: #666; margin-top: 4px; }
+        
+        .cafe-list { padding: 0; }
+        
+        .cafe-item {
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .cafe-item:hover { background: #f9f9f9; }
+        .cafe-item.active { background: #e8f5e9; }
+        
+        .cafe-header {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        
+        .cafe-thumb {
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            background: #e0e0e0;
+            flex-shrink: 0;
+            object-fit: cover;
+        }
+        
+        .cafe-info { flex: 1; }
+        .cafe-name { font-size: 15px; font-weight: 600; color: #222; margin-bottom: 4px; }
+        .cafe-address { font-size: 12px; color: #666; margin-bottom: 8px; }
+        
+        .vibe-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        
+        .vibe-tag {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            background: #f0f0f0;
+            color: #555;
+        }
+        
+        .vibe-tag.green { background: #e8f5e9; color: #2e7d32; }
+        
+        .cafe-details {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #f0f0f0;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .detail-item {
+            display: inline-block;
+            margin-right: 12px;
+            margin-top: 4px;
+        }
+        
+        .toggle-btn {
+            position: absolute;
+            top: 50%;
+            right: 380px;
+            transform: translateY(-50%);
+            background: white;
+            border: none;
+            padding: 12px 8px;
+            border-radius: 8px 0 0 8px;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+            cursor: pointer;
+            z-index: 998;
+            transition: right 0.3s;
+        }
+        
+        .toggle-btn.collapsed { right: 0; border-radius: 0 8px 8px 0; box-shadow: 2px 0 8px rgba(0,0,0,0.1); }
+        
+        .custom-marker {
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .info-bubble {
+            position: relative;
+            padding: 15px;
+            min-width: 250px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .info-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-top: 12px solid white;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1));
+        }
+
+        .info-bubble img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .info-bubble strong {
+            font-size: 15px;
+            color: #222;
+        }
+
+        .info-bubble small {
+            color: #666;
+        }
+
+        .info-vibe-tags {
+            margin-top: 8px;
+        }
+
+        .info-vibe-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            background: #e8f5e9;
+            color: #2e7d32;
+            border-radius: 10px;
+            font-size: 11px;
+            margin: 2px;
+        }
+
+        .info-details {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="filter-bar">
+        <div class="filter-chips">
+            <div class="chip selected" data-category="all">All</div>
+            <div class="chip" data-category="work">💼 Work</div>
+            <div class="chip" data-category="relax">☕ Relax</div>
+            <div class="chip" data-category="nature">🌿 Nature</div>
+            <div class="chip" data-category="unique">✨ Unique</div>
+        </div>
+    </div>
+    
+    <button class="toggle-btn" onclick="toggleSidebar()">☰</button>
+    
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title">Cafes in Anyang</div>
+            <div class="sidebar-count" id="cafeCount">Loading...</div>
+        </div>
+        <div class="cafe-list" id="cafeList"></div>
+    </div>
+    
+    <div id="map"></div>
+
+    <script src="config.js"></script>
+    <script>
+        // Dynamically load Kakao Maps SDK with API key from config
+        const script = document.createElement('script');
+        script.type = 'text/javascript';
+        script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${CONFIG.KAKAO_API_KEY}&libraries=services,clusterer&autoload=false`;
+        document.head.appendChild(script);
+    </script>
+    <script>
+        const ANYANG_CENTER = { lat: 37.3943, lng: 126.9568 };
+        let map, clusterer, selectedCategory = 'all', allCafes = [], markers = [], currentInfowindow = null;
+
+        function enrichCafeData(cafe, category) {
+            const mockPhotos = [
+                'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=200',
+                'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=200',
+                'https://images.unsplash.com/photo-1445116572660-236099ec97a0?w=200',
+                'https://images.unsplash.com/photo-1559496417-e7f25c2c0c5e?w=200'
+            ];
+            
+            cafe.photo = mockPhotos[Math.floor(Math.random() * mockPhotos.length)];
+            cafe.vibeTags = [];
+            
+            if (category === 'work') {
+                cafe.outlets = Math.floor(Math.random() * 20) + 5;
+                cafe.wifiSpeed = Math.floor(Math.random() * 100) + 50 + 'Mbps';
+                cafe.seating = Math.floor(Math.random() * 50) + 20;
+                cafe.vibeTags = ['Quiet', 'WiFi', 'Outlets'];
+            } else if (category === 'unique') {
+                const themes = ['Cat Cafe', 'Dog Cafe', 'Book Cafe', 'Vintage', 'Minimalist'];
+                cafe.theme = themes[Math.floor(Math.random() * themes.length)];
+                cafe.specialMenu = ['Signature Latte', 'Handmade Dessert', 'Organic Tea'][Math.floor(Math.random() * 3)];
+                cafe.vibeTags = [cafe.theme, 'Instagram-worthy'];
+            } else if (category === 'nature') {
+                cafe.vibeTags = ['Garden', 'Outdoor', 'Fresh Air'];
+            } else {
+                cafe.vibeTags = ['Cozy', 'Relaxing'];
+            }
+            
+            if (Math.random() > 0.5) cafe.vibeTags.push('Pet-friendly');
+            
+            return cafe;
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const btn = document.querySelector('.toggle-btn');
+            sidebar.classList.toggle('collapsed');
+            btn.classList.toggle('collapsed');
+        }
+
+        function renderCafeList(cafes) {
+            const list = document.getElementById('cafeList');
+            document.getElementById('cafeCount').textContent = `${cafes.length} cafes found`;
+            
+            list.innerHTML = cafes.map((cafe, idx) => `
+                <div class="cafe-item" onclick="selectCafe(${idx})">
+                    <div class="cafe-header">
+                        <img src="${cafe.photo}" class="cafe-thumb" alt="${cafe.name}">
+                        <div class="cafe-info">
+                            <div class="cafe-name">${cafe.name}</div>
+                            <div class="cafe-address">${cafe.address}</div>
+                            <div class="vibe-tags">
+                                ${cafe.vibeTags.map(tag => `<span class="vibe-tag ${tag === 'WiFi' || tag === 'Outlets' ? 'green' : ''}">${tag}</span>`).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    ${cafe.outlets ? `
+                        <div class="cafe-details">
+                            <span class="detail-item">🔌 ${cafe.outlets} outlets</span>
+                            <span class="detail-item">📶 ${cafe.wifiSpeed}</span>
+                            <span class="detail-item">💺 ${cafe.seating} seats</span>
+                        </div>
+                    ` : ''}
+                    ${cafe.theme ? `
+                        <div class="cafe-details">
+                            <span class="detail-item">🎨 ${cafe.theme}</span>
+                            <span class="detail-item">☕ ${cafe.specialMenu}</span>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        function selectCafe(idx) {
+            document.querySelectorAll('.cafe-item').forEach((el, i) => {
+                el.classList.toggle('active', i === idx);
+            });
+            
+            const cafe = allCafes[idx];
+            map.setCenter(new kakao.maps.LatLng(cafe.latitude, cafe.longitude));
+            map.setLevel(3);
+            
+            const markerContent = markers[idx].getContent();
+            markerContent.click();
+        }
+
+        kakao.maps.load(function() {
+            map = new kakao.maps.Map(document.getElementById('map'), {
+                center: new kakao.maps.LatLng(ANYANG_CENTER.lat, ANYANG_CENTER.lng),
+                level: 5
+            });
+
+            clusterer = new kakao.maps.MarkerClusterer({
+                map: map,
+                averageCenter: true,
+                minLevel: 5,
+                styles: [{
+                    width: '50px', height: '50px',
+                    background: '#4CAF50',
+                    borderRadius: '50%',
+                    color: 'white',
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    lineHeight: '50px',
+                    border: '3px solid white',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                }]
+            });
+
+            kakao.maps.event.addListener(map, 'idle', function() {
+                searchCafes();
+            });
+
+            searchCafes();
+        });
+
+        document.querySelectorAll('.chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+                chip.classList.add('selected');
+                selectedCategory = chip.dataset.category;
+                searchCafes();
+            });
+        });
+
+        function searchCafes() {
+            const ps = new kakao.maps.services.Places();
+            const keyword = selectedCategory === 'all' ? '카페' : getCategoryKeyword(selectedCategory);
+            const center = map.getCenter();
+            
+            ps.keywordSearch(keyword, (data, status) => {
+                if (status === kakao.maps.services.Status.OK) {
+                    allCafes = data.map(place => enrichCafeData({
+                        name: place.place_name,
+                        address: place.address_name,
+                        phone: place.phone || '',
+                        latitude: parseFloat(place.y),
+                        longitude: parseFloat(place.x),
+                        category: selectedCategory
+                    }, selectedCategory));
+                    
+                    displayMarkers(allCafes);
+                    renderCafeList(allCafes);
+                    saveCafesToBackend(allCafes);
+                }
+            }, {
+                location: new kakao.maps.LatLng(center.getLat(), center.getLng()),
+                radius: 5000,
+                category_group_code: 'CE7'
+            });
+        }
+
+        function getCategoryKeyword(category) {
+            const keywords = {
+                work: '카페 노트북',
+                relax: '카페 힐링',
+                nature: '카페 정원',
+                unique: '카페 감성'
+            };
+            return keywords[category] || '카페';
+        }
+
+        function displayMarkers(cafes) {
+            clusterer.clear();
+            markers = [];
+            
+            cafes.forEach((cafe, idx) => {
+                const content = document.createElement('div');
+                content.innerHTML = '☕';
+                content.className = 'custom-marker';
+                
+                const marker = new kakao.maps.CustomOverlay({
+                    position: new kakao.maps.LatLng(cafe.latitude, cafe.longitude),
+                    content: content
+                });
+                
+                marker.setMap(map);
+                
+                content.onclick = () => {
+                    if (currentInfowindow) {
+                        currentInfowindow.setMap(null);
+                    }
+                    
+                    const infoContent = document.createElement('div');
+                    infoContent.className = 'info-bubble';
+                    infoContent.innerHTML = `
+                        <img src="${cafe.photo}" alt="${cafe.name}">
+                        <strong>${cafe.name}</strong><br>
+                        <small>${cafe.address}</small>
+                        <div class="info-vibe-tags">
+                            ${cafe.vibeTags.map(tag => `<span class="info-vibe-tag">${tag}</span>`).join('')}
+                        </div>
+                        ${cafe.outlets ? `<div class="info-details">🔌 ${cafe.outlets} outlets | 📶 ${cafe.wifiSpeed} | 💺 ${cafe.seating} seats</div>` : ''}
+                        ${cafe.theme ? `<div class="info-details">🎨 ${cafe.theme} | ☕ ${cafe.specialMenu}</div>` : ''}
+                    `;
+                    
+                    currentInfowindow = new kakao.maps.CustomOverlay({
+                        content: infoContent,
+                        position: new kakao.maps.LatLng(cafe.latitude, cafe.longitude),
+                        yAnchor: 1.1
+                    });
+                    
+                    currentInfowindow.setMap(map);
+                };
+                
+                markers.push(marker);
+            });
+        }
+
+        function saveCafesToBackend(cafes) {
+            fetch('/api/cafes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cafes)
+            }).catch(err => console.log('Cache save failed:', err));
+        }
+    </script>
+</body>
+</html>
