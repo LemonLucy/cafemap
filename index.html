@@ -91,6 +91,13 @@
             background: white;
         }
         
+        /* 0.0점 카페는 배경/테두리 없음 */
+        .marker-icon.no-score {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+        }
+        
         .marker-icon:hover {
             transform: scale(1.15);
         }
@@ -458,7 +465,13 @@
             if (markerIcon && data) {
                 const oldColor = markerIcon.className.split(' ')[1];
                 const newColor = data.signalColor || 'gray';
-                markerIcon.className = 'marker-icon ' + newColor;
+                
+                // 0.0점이면 no-score 클래스 추가
+                if (data.totalScore === 0) {
+                    markerIcon.className = 'marker-icon no-score';
+                } else {
+                    markerIcon.className = 'marker-icon ' + newColor;
+                }
                 
                 // z-index 업데이트
                 const zIndexMap = { green: 1000, yellow: 900, red: 800, gray: 700 };
@@ -468,7 +481,13 @@
                 
                 const scoreEl = markerIcon.querySelector('.marker-score');
                 if (scoreEl && data.totalScore !== undefined) {
-                    scoreEl.textContent = data.totalScore.toFixed(1);
+                    // 0.0점이면 점수 숨기기
+                    if (data.totalScore === 0) {
+                        scoreEl.style.display = 'none';
+                    } else {
+                        scoreEl.textContent = data.totalScore.toFixed(1);
+                        scoreEl.style.display = 'block';
+                    }
                 }
                 
                 // 평점이 있으면 카페 이름 표시
