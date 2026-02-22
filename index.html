@@ -26,6 +26,51 @@
             background: white;
         }
         
+        .sort-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        
+        .sort-btn {
+            flex: 1;
+            padding: 6px 12px;
+            font-size: 12px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .sort-btn:hover {
+            background: #f5f5f5;
+        }
+        
+        .sort-btn.active {
+            background: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+        
+        .search-box {
+            padding: 12px 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
         .cafe-item {
             padding: 16px 20px;
             border-bottom: 1px solid #f0f0f0;
@@ -175,6 +220,14 @@
         <div class="sidebar-header">
             <div style="font-size:18px;font-weight:600;">Cafes</div>
             <div id="cafeCount" style="font-size:13px;color:#666;margin-top:4px;">Loading...</div>
+            <div class="sort-buttons">
+                <button class="sort-btn active" onclick="sortCafes('score-high')">평점 높은순</button>
+                <button class="sort-btn" onclick="sortCafes('score-low')">평점 낮은순</button>
+                <button class="sort-btn" onclick="sortCafes('distance')">거리순</button>
+            </div>
+        </div>
+        <div class="search-box">
+            <input type="text" class="search-input" id="searchInput" placeholder="카페명 또는 지역 검색..." onkeyup="handleSearch(event)">
         </div>
         <div id="cafeList"></div>
     </div>
@@ -187,6 +240,8 @@
         console.log('=== 스크립트 시작 ===');
         
         let map, allCafes = [], markers = [], activeMarkerIdx = null;
+        let currentSort = 'score-high';
+        let userLocation = null;
         
         window.addEventListener('load', function() {
             console.log('페이지 로드됨');
@@ -195,7 +250,45 @@
             } else {
                 console.error('카카오 맵 로드 실패');
             }
+            
+            // 사용자 위치 가져오기
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        console.log('사용자 위치:', userLocation);
+                    },
+                    error => console.log('위치 권한 거부 또는 에러:', error)
+                );
+            }
         });
+        
+        function clearOldCache() {
+            // localStorage에서 cafe_ 로 시작하는 모든 키 찾기
+            const keys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('cafe_')) {
+                    keys.push(key);
+                }
+            }
+            
+            // 타임스탬프 기준으로 정렬하여 오래된 것부터 삭제
+            const items = keys.map(key => {
+                const item = JSON.parse(localStorage.getItem(key));
+                return { key, timestamp: item.timestamp };
+            }).sort((a, b) => a.timestamp - b.timestamp);
+            
+            // 가장 오래된 30% 삭제
+            const deleteCount = Math.ceil(items.length * 0.3);
+            for (let i = 0; i < deleteCount; i++) {
+                localStorage.removeItem(items[i].key);
+            }
+            console.log(`오래된 캐시 ${deleteCount}개 삭제`);
+        }
         
         function initMap() {
             console.log('지도 초기화');
@@ -282,22 +375,120 @@
             const list = document.getElementById('cafeList');
             document.getElementById('cafeCount').textContent = cafes.length + ' cafes';
             
-            list.innerHTML = cafes.map((cafe, idx) => `
-                <div class="cafe-item" onclick="showCafeDetail(${idx})">
-                    <div class="cafe-header">
-                        <div class="signal-dot signal-gray" id="signal-${idx}"></div>
-                        <div>
-                            <div class="cafe-name">${cafe.name}</div>
-                            <div class="cafe-address">${cafe.address}</div>
+            list.innerHTML = cafes.map((cafe, idx) => {
+                const originalIdx = cafe.originalIdx !== undefined ? cafe.originalIdx : idx;
+                return `
+                    <div class="cafe-item" onclick="showCafeDetail(${originalIdx})">
+                        <div class="cafe-header">
+                            <div class="signal-dot signal-${cafe.detailData ? cafe.detailData.signalColor : 'gray'}" id="signal-${originalIdx}"></div>
+                            <div>
+                                <div class="cafe-name">${cafe.name}</div>
+                                <div class="cafe-address">${cafe.address}</div>
+                            </div>
+                        </div>
+                        <div class="cafe-indicators" id="indicators-${originalIdx}">
+                            ${cafe.detailData ? getIndicatorsHtml(cafe.detailData) : '<div class="indicator">분석중...</div>'}
                         </div>
                     </div>
-                    <div class="cafe-indicators" id="indicators-${idx}">
-                        <div class="indicator">분석중...</div>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
             
-            cafes.forEach((cafe, idx) => loadIndicators(cafe, idx));
+            // 처음 렌더링할 때만 loadIndicators 호출
+            if (cafes[0] && cafes[0].originalIdx === undefined) {
+                cafes.forEach((cafe, idx) => {
+                    cafe.originalIdx = idx;
+                    loadIndicators(cafe, idx);
+                });
+            }
+        }
+        
+        function getIndicatorsHtml(data) {
+            let html = '';
+            if (data.workScore > 0) html += '<div class="indicator">💼 ' + data.workScore + '/10</div>';
+            if (data.outletLevel !== '정보 없음') html += '<div class="indicator">🔌 ' + data.outletLevel + '</div>';
+            if (data.noiseLevel !== '정보 없음') html += '<div class="indicator">🔇 ' + data.noiseLevel + '</div>';
+            if (data.hasWifi) html += '<div class="indicator">📶 WiFi</div>';
+            if (data.blogCount > 0) html += '<div class="indicator">📝 ' + data.blogCount + '</div>';
+            return html || '<div class="indicator">정보 없음</div>';
+        }
+        
+        function sortCafes(sortType) {
+            currentSort = sortType;
+            
+            // 버튼 활성화 상태 변경
+            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            let sortedCafes = [...allCafes];
+            
+            if (sortType === 'score-high') {
+                sortedCafes.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+            } else if (sortType === 'score-low') {
+                sortedCafes.sort((a, b) => (a.totalScore || 0) - (b.totalScore || 0));
+            } else if (sortType === 'distance') {
+                if (!userLocation) {
+                    alert('위치 권한이 필요합니다. 브라우저 설정에서 위치 권한을 허용해주세요.');
+                    return;
+                }
+                sortedCafes.sort((a, b) => {
+                    const distA = getDistance(userLocation.lat, userLocation.lng, a.latitude, a.longitude);
+                    const distB = getDistance(userLocation.lat, userLocation.lng, b.latitude, b.longitude);
+                    return distA - distB;
+                });
+            }
+            
+            renderCafeList(sortedCafes);
+        }
+        
+        function getDistance(lat1, lng1, lat2, lng2) {
+            const R = 6371; // 지구 반지름 (km)
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLng/2) * Math.sin(dLng/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+        
+        function handleSearch(event) {
+            if (event.key === 'Enter') {
+                const query = event.target.value.trim();
+                if (!query) return;
+                
+                searchLocation(query);
+            }
+        }
+        
+        function searchLocation(query) {
+            const ps = new kakao.maps.services.Places();
+            
+            // 카페 + 검색어로 검색
+            ps.keywordSearch(query + ' 카페', (data, status) => {
+                if (status === kakao.maps.services.Status.OK && data.length > 0) {
+                    // 첫 번째 결과로 이동
+                    const place = data[0];
+                    const moveLatLon = new kakao.maps.LatLng(place.y, place.x);
+                    
+                    // 지도 이동
+                    map.setCenter(moveLatLon);
+                    map.setLevel(3); // 줌인
+                    
+                    // 카페 검색 (자동으로 idle 이벤트 발생)
+                } else {
+                    // 카페 없이 지역만 검색
+                    ps.keywordSearch(query, (data, status) => {
+                        if (status === kakao.maps.services.Status.OK && data.length > 0) {
+                            const place = data[0];
+                            const moveLatLon = new kakao.maps.LatLng(place.y, place.x);
+                            map.setCenter(moveLatLon);
+                            map.setLevel(4);
+                        } else {
+                            alert('검색 결과가 없습니다.');
+                        }
+                    });
+                }
+            });
         }
         
         function showCafeDetail(idx) {
@@ -500,18 +691,54 @@
         
         async function loadIndicators(cafe, idx) {
             try {
-                const response = await fetch('http://localhost:5000/api/blog-search', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: cafe.name, address: cafe.address })
-                });
-                const data = await response.json();
+                // localStorage 캐시 확인
+                const cacheKey = `cafe_${cafe.name}_${cafe.address}`;
+                const cached = localStorage.getItem(cacheKey);
+                
+                let data;
+                if (cached) {
+                    const cachedData = JSON.parse(cached);
+                    // 캐시가 24시간 이내면 사용
+                    if (Date.now() - cachedData.timestamp < 24 * 60 * 60 * 1000) {
+                        console.log('캐시 사용:', cafe.name);
+                        data = cachedData.data;
+                    }
+                }
+                
+                // 캐시가 없거나 만료되면 API 호출
+                if (!data) {
+                    console.log('API 호출:', cafe.name);
+                    const response = await fetch('http://localhost:5000/api/blog-search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: cafe.name, address: cafe.address })
+                    });
+                    data = await response.json();
+                    
+                    // localStorage에 캐시 저장
+                    try {
+                        localStorage.setItem(cacheKey, JSON.stringify({
+                            data: data,
+                            timestamp: Date.now()
+                        }));
+                    } catch (e) {
+                        // localStorage 용량 초과 시 오래된 캐시 삭제
+                        if (e.name === 'QuotaExceededError') {
+                            clearOldCache();
+                            localStorage.setItem(cacheKey, JSON.stringify({
+                                data: data,
+                                timestamp: Date.now()
+                            }));
+                        }
+                    }
+                }
                 
                 // 카페 객체에 데이터 저장
                 allCafes[idx].detailData = data;
+                allCafes[idx].totalScore = data.totalScore || 0;
                 
-                // 마커 업데이트
-                updateMarker(idx, data);
+                // 마커 업데이트 (DOM이 준비될 때까지 약간 대기)
+                setTimeout(() => updateMarker(idx, data), 100);
                 
                 const signalDot = document.getElementById('signal-' + idx);
                 if (signalDot) {
