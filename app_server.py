@@ -14,7 +14,7 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "fsrn1wXmk3")
 
 # 메모리 캐시 (버전 추가로 캐시 무효화)
 blog_cache = {}
-CACHE_VERSION = "v13"  # 캐시 버전 (휴양지/대형카페 보너스 +1점)
+CACHE_VERSION = "v18"  # 캐시 버전 (일반 단어는 지역명 필수)
 
 def get_cafe_image_from_naver(cafe_name):
     """네이버 이미지 검색 API로 카페 이미지 가져오기"""
@@ -139,17 +139,53 @@ def analyze_blog_content(cafe_name, cafe_address):
             
         data = response.json()
         
-        # 카페 키워드 추출
+        # 카페 키워드 추출 (개선)
+        # 지역명 추출 (시/구/동 단위)
+        address_parts = cafe_address.split()
+        location_keyword = ""
+        for part in address_parts:
+            if '시' in part or '구' in part or '동' in part or '읍' in part or '면' in part:
+                location_keyword = part.replace('시', '').replace('구', '').replace('동', '').replace('읍', '').replace('면', '')
+                break
+        
         if cafe_name.endswith('점'):
+            # "스타벅스 강남점" → "스타벅스 강남"
             cafe_keyword = cafe_name.replace('카페', '').replace('커피', '').strip()
         else:
-            cafe_keyword = cafe_name.replace('카페', '').replace('커피', '').replace('점', '').strip().split()[0]
+            # 일반 카페명 처리
+            temp_name = cafe_name.replace('카페', '').replace('커피', '').replace('점', '').strip()
+            
+            # 숫자나 "24시", "무인" 같은 일반 단어 제거
+            words = temp_name.split()
+            meaningful_words = []
+            skip_words = ['24시', '무인', '셀프', '스터디', '공부방', '독서실']
+            
+            for word in words:
+                # 숫자로만 구성되거나 skip_words에 있으면 제외
+                if not word.isdigit() and word not in skip_words:
+                    meaningful_words.append(word)
+            
+            # 의미있는 단어가 있으면 사용, 없으면 원본 사용
+            if meaningful_words:
+                cafe_keyword = ' '.join(meaningful_words)
+            else:
+                cafe_keyword = temp_name
+        
+        # 일반적인 단어(2글자 이하 또는 흔한 단어)는 지역명 필수
+        common_words = ['여유', '힐링', '쉼', '휴식', '행복', '사랑', '평화', '온', '숲', '바다', '하늘']
+        needs_location = len(cafe_keyword) <= 2 or any(word in cafe_keyword for word in common_words)
+        
+        print(f"🔍 카페명: {cafe_name} → 검색 키워드: {cafe_keyword}, 지역: {location_keyword}, 지역필수: {needs_location}")
         
         # 필터링 및 키워드 분석
         filtered_urls = []
         filtered_items = []  # 제목과 설명도 함께 저장
         all_text = ""
         cafe_description = ""
+        
+        # 1차 필터링: 작업 키워드 포함
+        work_filtered_items = []
+        basic_filtered_items = []  # 카페명+지역만 포함
         
         for item in data['items']:
             title = item.get('title', '').replace('<b>', '').replace('</b>', '')
@@ -160,24 +196,53 @@ def analyze_blog_content(cafe_name, cafe_address):
             if cafe_keyword.lower() not in combined:
                 continue
             
-            # 필터링 로직: 휴양지는 카페명+지역만, 일반 지역은 작업 키워드 필수
-            if not is_major_cafe and not is_resort_area:
-                work_keywords = ['카공', '공부', '작업', '노트북', '조용', '집중', '넓은', '좌석', '책', '와이파이', 'wifi', '콘센트', '충전','노트북', '스터디']
-                has_work_keyword = any(keyword in combined for keyword in work_keywords)
-                if not has_work_keyword:
+            # 일반적인 단어는 지역명도 필수
+            if needs_location and location_keyword:
+                if location_keyword.lower() not in combined:
                     continue
             
-            filtered_urls.append(item['link'])
-            filtered_items.append({
-                'url': item['link'],
+            # 카페/커피 키워드 필수 (카페가 아닌 다른 장소 제외)
+            if '카페' not in combined and '커피' not in combined and 'cafe' not in combined and 'coffee' not in combined:
+                continue
+            
+            item_data = {
+                'link': item['link'],
                 'title': title,
-                'description': description[:100] + '...' if len(description) > 100 else description
+                'description': description,
+                'combined': combined
+            }
+            
+            # 작업 키워드 체크
+            work_keywords = ['카공', '공부', '작업', '노트북', '조용', '집중', '넓은', '좌석', '책', '와이파이', 'wifi', '콘센트', '충전', '스터디']
+            has_work_keyword = any(keyword in combined for keyword in work_keywords)
+            
+            if has_work_keyword:
+                work_filtered_items.append(item_data)
+            else:
+                basic_filtered_items.append(item_data)
+        
+        # 2차 필터링: 작업 키워드 있는 것 우선, 부족하면 기본 필터링 추가
+        # 휴양지나 대형 카페는 작업 키워드 없어도 OK
+        if is_major_cafe or is_resort_area:
+            final_items = work_filtered_items + basic_filtered_items
+        else:
+            # 작업 키워드 있는 것이 5개 미만이면 기본 필터링도 추가 (최대 20개)
+            if len(work_filtered_items) < 5:
+                final_items = work_filtered_items + basic_filtered_items[:20]
+            else:
+                final_items = work_filtered_items
+        
+        # 최종 결과 생성 (최대 20개)
+        for item_data in final_items[:20]:
+            filtered_urls.append(item_data['link'])
+            filtered_items.append({
+                'url': item_data['link'],
+                'title': item_data['title'],
+                'description': item_data['description'][:100] + '...' if len(item_data['description']) > 100 else item_data['description']
             })
-            all_text += " " + title + " " + description
+            all_text += " " + item_data['title'] + " " + item_data['description']
             if not cafe_description:
-                cafe_description = description[:80] + "..." if len(description) > 80 else description
-            if len(filtered_urls) >= 20:
-                break
+                cafe_description = item_data['description'][:80] + "..." if len(item_data['description']) > 80 else item_data['description']
         
         if not filtered_urls:
             return get_empty_result()
@@ -291,31 +356,31 @@ def analyze_blog_content(cafe_name, cafe_address):
             total_score = 0
             review_count = len(filtered_urls)
             
-            # 1. 작업 적합도 (최대 1.5점)
+            # 1. 작업 적합도 (최대 2.8점)
             if work_score >= 10:
-                total_score += 1.5
+                total_score += 2.8
             elif work_score >= 8:
-                total_score += 1.2
+                total_score += 2.2
             elif work_score >= 5:
-                total_score += 1
+                total_score += 1.5
             elif work_score >= 2:
-                total_score += 0.5
+                total_score += 0.8
             
-            # 2. 콘센트 (최대 1점)
+            # 2. 콘센트 (최대 0.4점)
             if outlet_level == "모든 좌석":
-                total_score += 1
+                total_score += 0.4
             elif outlet_level == "50% 정도":
-                total_score += 0.7
+                total_score += 0.28
             elif outlet_level == "벽면에만":
-                total_score += 0.5
+                total_score += 0.2
             
-            # 3. 소음 레벨 (최대 1점)
+            # 3. 소음 레벨 (최대 0.3점)
             if noise_level == "독서실 수준":
-                total_score += 1
+                total_score += 0.3
             elif noise_level == "잔잔한 음악":
-                total_score += 0.7
+                total_score += 0.21
             elif noise_level == "보통":
-                total_score += 0.5
+                total_score += 0.15
             
             # 4. 공간감 (최대 0.8점)
             if space_level == "매우 넓음":
@@ -323,17 +388,17 @@ def analyze_blog_content(cafe_name, cafe_address):
             elif space_level == "넓은 편":
                 total_score += 0.5
             
-            # 5. WiFi (최대 0.3점)
+            # 5. WiFi (최대 0.4점)
             if has_wifi:
-                total_score += 0.3
-            
-            # 6. 리뷰 개수 (최대 0.4점)
-            if review_count >= 15:
                 total_score += 0.4
-            elif review_count >= 10:
+            
+            # 6. 리뷰 개수 (최대 0.3점)
+            if review_count >= 15:
                 total_score += 0.3
+            elif review_count >= 10:
+                total_score += 0.23
             elif review_count >= 5:
-                total_score += 0.2
+                total_score += 0.15
             
             # 대형 카페는 최소 2.5점 보장
             if is_major_cafe and total_score < 2.5:
@@ -434,6 +499,14 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
+        elif self.path == '/api/clear-cache':
+            global blog_cache
+            blog_cache.clear()
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "message": "Cache cleared"}).encode('utf-8'))
         else:
             self.send_error(404)
 
