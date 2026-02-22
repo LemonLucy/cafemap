@@ -14,7 +14,7 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "fsrn1wXmk3")
 
 # 메모리 캐시 (버전 추가로 캐시 무효화)
 blog_cache = {}
-CACHE_VERSION = "v9"  # 캐시 버전 (5점 만점 시스템)
+CACHE_VERSION = "v13"  # 캐시 버전 (휴양지/대형카페 보너스 +1점)
 
 def get_cafe_image_from_naver(cafe_name):
     """네이버 이미지 검색 API로 카페 이미지 가져오기"""
@@ -93,8 +93,29 @@ def analyze_blog_content(cafe_name, cafe_address):
         return blog_cache[cache_key]
     
     # 대형 카페 브랜드 리스트
-    major_brands = ['대형카페','스타벅스', '투썸플레이스', '투썸', '이디야', '커피빈', '할리스', '탐앤탐스', '파스쿠찌', '엔제리너스', '빽다방', '메가커피', '컴포즈커피']
+    major_brands = ['대형카페','스타벅스', '투썸플레이스', '투썸', '이디야', '커피빈', '할리스', '탐앤탐스', '파스쿠찌', '엔제리너스', '디저트39']
     is_major_cafe = any(brand in cafe_name for brand in major_brands)
+    
+    # 휴양지 리스트 (행정구역 키워드)
+    resort_areas = [
+        # 강원권
+        '양양군', '양양', '강릉시', '강릉', '속초시', '속초', '고성군', '고성', '삼척시', '삼척', 
+        '평창군', '평창', '정선군', '정선', '홍천군', '홍천',
+        # 인천/경기권
+        '중구', '월미도', '영종도', '강화군', '강화', '옹진군', '옹진', '가평군', '가평', 
+        '양평군', '양평', '대부도',
+        # 충청권
+        '태안군', '태안', '안면도', '보령시', '보령', '대천', '서천군', '서천', '단양군', '단양',
+        # 전라권
+        '여수시', '여수', '순천시', '순천', '신안군', '신안', '진도군', '진도', 
+        '부안군', '부안', '완도군', '완도',
+        # 경상권
+        '경주시', '경주', '포항시', '포항', '거제시', '거제', '남해군', '남해', 
+        '통영시', '통영', '울릉군', '울릉도', '영덕군', '영덕',
+        # 제주권
+        '제주시', '제주', '서귀포시', '서귀포'
+    ]
+    is_resort_area = any(area in cafe_address for area in resort_areas)
     
     # 네이버 블로그 검색 API 호출
     url = "https://openapi.naver.com/v1/search/blog.json"
@@ -139,9 +160,9 @@ def analyze_blog_content(cafe_name, cafe_address):
             if cafe_keyword.lower() not in combined:
                 continue
             
-            # 대형 카페가 아니면 카공 관련 키워드 필수
-            work_keywords = ['카공', '공부', '작업', '노트북', '조용', '집중', '넓은', '좌석', '책', '와이파이', 'wifi', '콘센트', '충전','노트북', '스터디']
-            if not is_major_cafe:
+            # 필터링 로직: 휴양지는 카페명+지역만, 일반 지역은 작업 키워드 필수
+            if not is_major_cafe and not is_resort_area:
+                work_keywords = ['카공', '공부', '작업', '노트북', '조용', '집중', '넓은', '좌석', '책', '와이파이', 'wifi', '콘센트', '충전','노트북', '스터디']
                 has_work_keyword = any(keyword in combined for keyword in work_keywords)
                 if not has_work_keyword:
                     continue
@@ -191,11 +212,27 @@ def analyze_blog_content(cafe_name, cafe_address):
         else:
             noise_level = "보통"
         
-        # 작업 적합도 (5점 만점)
-        work_words = (text_lower.count('노트북') + text_lower.count('작업') + 
-                     text_lower.count('공부') + text_lower.count('카공') + 
-                     text_lower.count('스터디') + text_lower.count('업무'))
-        work_score = min(5.0, work_words * 0.5)
+        # 작업 적합도
+        work_mentions = (text_lower.count('노트북') + text_lower.count('작업') + 
+                        text_lower.count('공부') + text_lower.count('카공') + 
+                        text_lower.count('스터디') + text_lower.count('업무'))
+        
+        work_positive = (text_lower.count('작업하기 좋') + text_lower.count('공부하기 좋') + 
+                        text_lower.count('카공하기 좋') + text_lower.count('노트북 하기 좋') +
+                        text_lower.count('작업 추천') + text_lower.count('공부 추천') +
+                        text_lower.count('카공 추천') + text_lower.count('카공 좋'))
+        
+        work_negative = (text_lower.count('작업하기 안좋') + text_lower.count('작업하기 안 좋') +
+                        text_lower.count('공부하기 안좋') + text_lower.count('공부하기 안 좋') +
+                        text_lower.count('카공 비추') + text_lower.count('카공 안좋'))
+        
+        work_score = 0
+        if work_positive > 0:
+            work_score = 8 + (work_mentions * 0.5)
+        elif work_mentions > 0:
+            work_score = work_mentions * 0.5
+        work_score -= work_negative * 1
+        work_score = max(0, min(10, work_score))  # 0~10점 제한
         
         # 공간감 (키워드 조합으로 판단)
         space_words = text_lower.count('넓은') + text_lower.count('넓어') + text_lower.count('여유') + text_lower.count('쾌적') + text_lower.count('공간')
@@ -255,11 +292,13 @@ def analyze_blog_content(cafe_name, cafe_address):
             review_count = len(filtered_urls)
             
             # 1. 작업 적합도 (최대 1.5점)
-            if work_score >= 5:
+            if work_score >= 10:
                 total_score += 1.5
-            elif work_score >= 2:
+            elif work_score >= 8:
+                total_score += 1.2
+            elif work_score >= 5:
                 total_score += 1
-            elif work_score >= 1:
+            elif work_score >= 2:
                 total_score += 0.5
             
             # 2. 콘센트 (최대 1점)
@@ -299,6 +338,17 @@ def analyze_blog_content(cafe_name, cafe_address):
             # 대형 카페는 최소 2.5점 보장
             if is_major_cafe and total_score < 2.5:
                 total_score = 2.5
+            
+            # 휴양지 보너스 +1점
+            if is_resort_area:
+                total_score += 1
+            
+            # 대형 카페 보너스 +1점
+            if is_major_cafe:
+                total_score += 1
+            
+            # 최대 5점 제한
+            total_score = min(5.0, total_score)
             
             # 신호등 색상 결정
             if total_score >= 3.7:
