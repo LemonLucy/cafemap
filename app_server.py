@@ -4,136 +4,396 @@ import urllib.request
 import urllib.parse
 import re
 import os
+import sys
 from database import init_db, save_cafes, get_cafes
+import requests
+from bs4 import BeautifulSoup
 
-# Load from environment variables or use placeholders
-KAKAO_API_KEY = os.getenv("KAKAO_API_KEY", "YOUR_KAKAO_REST_API_KEY_HERE")
-NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "YOUR_NAVER_CLIENT_ID_HERE")
-NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "YOUR_NAVER_CLIENT_SECRET_HERE")
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "tr30Ch1tbJBqwNlv9svx")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "fsrn1wXmk3")
 
-def search_cafes(query, x, y, radius=1000):
-    params = urllib.parse.urlencode({"query": query, "category_group_code": "CE7", "x": x, "y": y, "radius": radius})
-    url = f"https://dapi.kakao.com/v2/local/search/keyword.json?{params}"
-    req = urllib.request.Request(url, headers={"Authorization": f"KakaoAK {KAKAO_API_KEY}"})
-    with urllib.request.urlopen(req) as response:
-        return json.loads(response.read().decode('utf-8')).get("documents", [])
+# 메모리 캐시 (버전 추가로 캐시 무효화)
+blog_cache = {}
+CACHE_VERSION = "v9"  # 캐시 버전 (5점 만점 시스템)
 
-def search_naver_blogs(cafe_name, cafe_address):
-    params = urllib.parse.urlencode({"query": f"{cafe_name} {cafe_address}", "display": 5, "sort": "date"})
-    url = f"https://openapi.naver.com/v1/search/blog.json?{params}"
-    req = urllib.request.Request(url, headers={"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET})
-    with urllib.request.urlopen(req) as response:
-        return json.loads(response.read().decode('utf-8')).get("items", [])
-
-def extract_keywords(blog_posts):
-    keywords = {"power_outlet": False, "quietness": False, "vibe": False}
-    combined_text = " ".join([post.get("description", "") for post in blog_posts])
-    combined_text = re.sub(r'<[^>]+>', '', combined_text)
+def get_cafe_image_from_naver(cafe_name):
+    """네이버 이미지 검색 API로 카페 이미지 가져오기"""
+    url = "https://openapi.naver.com/v1/search/image"
+    headers = {
+        "X-Naver-Client-Id": NAVER_CLIENT_ID,
+        "X-Naver-Client-Secret": NAVER_CLIENT_SECRET
+    }
+    params = {"query": cafe_name, "display": 1, "sort": "sim"}
     
-    if re.search(r'콘센트|충전|전원|power', combined_text, re.IGNORECASE):
-        keywords["power_outlet"] = True
-    if re.search(r'조용|quiet|집중', combined_text, re.IGNORECASE):
-        keywords["quietness"] = True
-    if re.search(r'분위기|vibe|감성|무드', combined_text, re.IGNORECASE):
-        keywords["vibe"] = True
-    
-    return keywords
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=2)
+        if response.status_code == 200:
+            data = response.json()
+            if data['items']:
+                return data['items'][0]['link']
+    except:
+        pass
+    return None
 
-def classify_category(keywords, combined_text):
-    if re.search(r'노트북|작업|업무|스터디|공부|work', combined_text, re.IGNORECASE) or keywords["power_outlet"]:
-        return "work"
-    elif re.search(r'힐링|여유|편안|relax|쉬', combined_text, re.IGNORECASE):
-        return "relax"
-    elif re.search(r'자연|정원|테라스|야외|nature|green', combined_text, re.IGNORECASE):
-        return "nature"
-    elif keywords["vibe"]:
-        return "unique"
-    return "relax"
-
-def fetch_and_store():
-    cafes = search_cafes("카페", "127.027926", "37.497952")
-    results = []
-    
-    for cafe in cafes:
-        cafe_name = cafe.get("place_name")
-        cafe_address = cafe.get("address_name", "")
+def get_blog_image_url(blog_url):
+    """블로그에서 첫 번째 이미지 URL만 추출 (다운로드 X)"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://blog.naver.com/'
+        }
         
-        blogs = search_naver_blogs(cafe_name, cafe_address)
-        combined_text = " ".join([post.get("description", "") for post in blogs])
-        combined_text = re.sub(r'<[^>]+>', '', combined_text)
-        keywords = extract_keywords(blogs)
-        category = classify_category(keywords, combined_text)
+        if 'm.blog.naver.com' in blog_url:
+            blog_url = blog_url.replace('m.blog.naver.com', 'blog.naver.com')
+        
+        response = requests.get(blog_url, headers=headers, timeout=3)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        main_frame = soup.find('iframe', id='mainFrame')
+        if not main_frame:
+            return None
+        
+        actual_url = "https://blog.naver.com" + main_frame['src']
+        res = requests.get(actual_url, headers=headers, timeout=3)
+        content_soup = BeautifulSoup(res.text, 'html.parser')
+        
+        img_tags = content_soup.select('img[src*="postfiles.pstatic.net"]')
+        if not img_tags:
+            return None
+        
+        # 첫 번째 이미지 URL 반환
+        img = img_tags[0]
+        img_url = img.get('data-lazy-src') or img.get('src')
+        return img_url
+    except:
+        return None
+
+def search_naver_blog(query, display=5):
+    """네이버 블로그 검색 - test_server 코드 사용"""
+    url = "https://openapi.naver.com/v1/search/blog.json"
+    headers = {
+        "X-Naver-Client-Id": NAVER_CLIENT_ID,
+        "X-Naver-Client-Secret": NAVER_CLIENT_SECRET
+    }
+    params = {"query": query, "display": display * 2, "sort": "sim"}  # 더 많이 가져와서 필터링
+    
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            return [item['link'] for item in data['items']]
+    except:
+        pass
+    return []
+
+def analyze_blog_content(cafe_name, cafe_address):
+    # 캐시 확인 (버전 포함)
+    cache_key = f"{CACHE_VERSION}_{cafe_name}_{cafe_address}"
+    if cache_key in blog_cache:
+        return blog_cache[cache_key]
+    
+    # 대형 카페 브랜드 리스트
+    major_brands = ['대형카페','스타벅스', '투썸플레이스', '투썸', '이디야', '커피빈', '할리스', '탐앤탐스', '파스쿠찌', '엔제리너스', '빽다방', '메가커피', '컴포즈커피']
+    is_major_cafe = any(brand in cafe_name for brand in major_brands)
+    
+    # 네이버 블로그 검색 API 호출
+    url = "https://openapi.naver.com/v1/search/blog.json"
+    headers = {
+        "X-Naver-Client-Id": NAVER_CLIENT_ID,
+        "X-Naver-Client-Secret": NAVER_CLIENT_SECRET
+    }
+    
+    # 대형 카페가 아니면 "카공" 키워드 추가
+    if is_major_cafe:
+        query = f"{cafe_name} {cafe_address}"
+    else:
+        query = f"{cafe_name} {cafe_address} 카공"
+    
+    params = {"query": query, "display": 100, "sort": "sim"}  # 30 → 50으로 증가
+    
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=3)
+        if response.status_code != 200:
+            return get_empty_result()
+            
+        data = response.json()
+        
+        # 카페 키워드 추출
+        if cafe_name.endswith('점'):
+            cafe_keyword = cafe_name.replace('카페', '').replace('커피', '').strip()
+        else:
+            cafe_keyword = cafe_name.replace('카페', '').replace('커피', '').replace('점', '').strip().split()[0]
+        
+        # 필터링 및 키워드 분석
+        filtered_urls = []
+        filtered_items = []  # 제목과 설명도 함께 저장
+        all_text = ""
+        cafe_description = ""
+        
+        for item in data['items']:
+            title = item.get('title', '').replace('<b>', '').replace('</b>', '')
+            description = item.get('description', '').replace('<b>', '').replace('</b>', '')
+            combined = (title + ' ' + description).lower()
+            
+            # 카페 이름 포함 확인
+            if cafe_keyword.lower() not in combined:
+                continue
+            
+            # 대형 카페가 아니면 카공 관련 키워드 필수
+            work_keywords = ['카공', '공부', '작업', '노트북', '조용', '집중', '넓은', '좌석', '책', '와이파이', 'wifi', '콘센트', '충전','노트북', '스터디']
+            if not is_major_cafe:
+                has_work_keyword = any(keyword in combined for keyword in work_keywords)
+                if not has_work_keyword:
+                    continue
+            
+            filtered_urls.append(item['link'])
+            filtered_items.append({
+                'url': item['link'],
+                'title': title,
+                'description': description[:100] + '...' if len(description) > 100 else description
+            })
+            all_text += " " + title + " " + description
+            if not cafe_description:
+                cafe_description = description[:80] + "..." if len(description) > 80 else description
+            if len(filtered_urls) >= 20:
+                break
+        
+        if not filtered_urls:
+            return get_empty_result()
+        
+        # 키워드 카운팅
+        text_lower = all_text.lower()
+        
+        # 콘센트 점유율 (키워드 조합으로 판단)
+        outlet_count = text_lower.count('콘센트') + text_lower.count('충전') + text_lower.count('플러그')
+        
+        # "콘센트 많아요", "콘센트 넉넉", "모든 좌석 콘센트" 등
+        if ('콘센트' in text_lower or '충전' in text_lower) and \
+           ('많' in text_lower or '넉넉' in text_lower or '모든' in text_lower or '전부' in text_lower or '충분' in text_lower):
+            outlet_level = "모든 좌석"
+        elif ('콘센트' in text_lower or '충전' in text_lower) and \
+             ('반' in text_lower or '절반' in text_lower or '일부' in text_lower):
+            outlet_level = "50% 정도"
+        elif outlet_count >= 1:
+            outlet_level = "벽면에만"
+        else:
+            outlet_level = "정보 없음"
+        
+        # 소음 레벨
+        quiet_words = text_lower.count('조용') + text_lower.count('집중') + text_lower.count('독서실') + text_lower.count('차분')
+        noisy_words = text_lower.count('시끄') + text_lower.count('떠들') + text_lower.count('북적') + text_lower.count('시끌')
+        if quiet_words >= 5:
+            noise_level = "독서실 수준"
+        elif quiet_words >= 2:
+            noise_level = "잔잔한 음악"
+        elif noisy_words >= 3:
+            noise_level = "대화 활발"
+        else:
+            noise_level = "보통"
+        
+        # 작업 적합도 (5점 만점)
+        work_words = (text_lower.count('노트북') + text_lower.count('작업') + 
+                     text_lower.count('공부') + text_lower.count('카공') + 
+                     text_lower.count('스터디') + text_lower.count('업무'))
+        work_score = min(5.0, work_words * 0.5)
+        
+        # 공간감 (키워드 조합으로 판단)
+        space_words = text_lower.count('넓은') + text_lower.count('넓어') + text_lower.count('여유') + text_lower.count('쾌적') + text_lower.count('공간')
+        cramped_words = text_lower.count('좁은') + text_lower.count('좁아') + text_lower.count('비좁')
+        
+        # 대형 카페는 기본적으로 넓은 편
+        if is_major_cafe:
+            if cramped_words >= 1:
+                space_level = "좁은 편"
+            else:
+                space_level = "넓은 편"  # 대형 카페 기본값
+        # "넓은 공간", "공간이 넓어요", "여유로운 좌석" 등
+        elif ('넓' in text_lower or '여유' in text_lower or '쾌적' in text_lower) and \
+           ('공간' in text_lower or '좌석' in text_lower or '매장' in text_lower):
+            space_level = "매우 넓음"
+        elif space_words >= 1:
+            space_level = "넓은 편"
+        elif cramped_words >= 1:
+            space_level = "좁은 편"
+        else:
+            space_level = "정보 없음"
+        
+        # 테이블 높이
+        if '높' in text_lower and '테이블' in text_lower:
+            table_height = "노트북 하기 좋음"
+        elif '낮' in text_lower and '테이블' in text_lower:
+            table_height = "인스타 감성형"
+        else:
+            table_height = "정보 없음"
+        
+        # 이용 제한
+        if '시간제한' in text_lower or '시간 제한' in text_lower:
+            time_limit = "시간 제한 있음"
+        elif '카공' in text_lower and ('환영' in text_lower or '추천' in text_lower):
+            time_limit = "카공 환영"
+        else:
+            time_limit = "정보 없음"
+        
+        # 와이파이
+        wifi_count = text_lower.count('와이파이') + text_lower.count('wifi') + text_lower.count('인터넷')
+        has_wifi = wifi_count > 0
+        
+        # 주차
+        parking_count = text_lower.count('주차')
+        has_parking = parking_count > 0
+        
+        # 신호등 색상 (종합 점수 기반)
+        # 리뷰가 없으면 회색 (대형 카페 제외)
+        if len(filtered_urls) == 0:
+            if is_major_cafe:
+                signal_color = "yellow"  # 대형 카페는 기본 노란색
+            else:
+                signal_color = "gray"  # 리뷰 없음
+        else:
+            # 종합 점수 계산 (최대 5점)
+            total_score = 0
+            review_count = len(filtered_urls)
+            
+            # 1. 작업 적합도 (최대 1.5점)
+            if work_score >= 5:
+                total_score += 1.5
+            elif work_score >= 2:
+                total_score += 1
+            elif work_score >= 1:
+                total_score += 0.5
+            
+            # 2. 콘센트 (최대 1점)
+            if outlet_level == "모든 좌석":
+                total_score += 1
+            elif outlet_level == "50% 정도":
+                total_score += 0.7
+            elif outlet_level == "벽면에만":
+                total_score += 0.5
+            
+            # 3. 소음 레벨 (최대 1점)
+            if noise_level == "독서실 수준":
+                total_score += 1
+            elif noise_level == "잔잔한 음악":
+                total_score += 0.7
+            elif noise_level == "보통":
+                total_score += 0.5
+            
+            # 4. 공간감 (최대 0.8점)
+            if space_level == "매우 넓음":
+                total_score += 0.8
+            elif space_level == "넓은 편":
+                total_score += 0.5
+            
+            # 5. WiFi (최대 0.3점)
+            if has_wifi:
+                total_score += 0.3
+            
+            # 6. 리뷰 개수 (최대 0.4점)
+            if review_count >= 15:
+                total_score += 0.4
+            elif review_count >= 10:
+                total_score += 0.3
+            elif review_count >= 5:
+                total_score += 0.2
+            
+            # 대형 카페는 최소 2.5점 보장
+            if is_major_cafe and total_score < 2.5:
+                total_score = 2.5
+            
+            # 신호등 색상 결정
+            if total_score >= 3.7:
+                signal_color = "green"
+            elif total_score >= 2.5:
+                signal_color = "yellow"
+            else:
+                signal_color = "red"
+        
+        # 키워드 빈도 분석
+        keywords = {}
+        keyword_list = ['노트북', '작업', '공부', '카공', '조용', '집중', '넓은', '좌석', '콘센트', '충전', '와이파이', 'wifi']
+        for keyword in keyword_list:
+            count = text_lower.count(keyword)
+            if count > 0:
+                keywords[keyword] = count
         
         result = {
-            "name": cafe_name,
-            "address": cafe_address,
-            "phone": cafe.get("phone", ""),
-            "latitude": float(cafe.get("y")),
-            "longitude": float(cafe.get("x")),
+            "workScore": round(work_score, 1),
+            "outletLevel": outlet_level,
+            "noiseLevel": noise_level,
+            "spaceLevel": space_level,
+            "tableHeight": table_height,
+            "timeLimit": time_limit,
+            "hasWifi": has_wifi,
+            "hasParking": has_parking,
+            "signalColor": signal_color,
+            "blogCount": len(filtered_urls),
+            "blogUrls": filtered_urls,
+            "blogItems": filtered_items,
+            "description": cafe_description,
             "keywords": keywords,
-            "blog_count": len(blogs),
-            "category": category
+            "totalScore": round(total_score, 1) if len(filtered_urls) > 0 else 0
         }
-        results.append(result)
-    
-    save_cafes(results)
-    return results
+        
+        blog_cache[cache_key] = result
+        return result
+        
+    except Exception as e:
+        print(f"Error analyzing blog: {e}")
+        return get_empty_result()
+
+def get_empty_result():
+    return {
+        "workScore": 0,
+        "outletLevel": "정보 없음",
+        "noiseLevel": "정보 없음",
+        "spaceLevel": "정보 없음",
+        "tableHeight": "정보 없음",
+        "timeLimit": "정보 없음",
+        "hasWifi": False,
+        "hasParking": False,
+        "signalColor": "gray",
+        "blogCount": 0,
+        "blogUrls": [],
+        "blogItems": [],
+        "description": "",
+        "keywords": {},
+        "totalScore": 0
+    }
 
 class Handler(SimpleHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/api/cafes':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            data = get_cafes()
-            self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
-        elif self.path == '/api/refresh':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            try:
-                data = fetch_and_store()
-                self.wfile.write(json.dumps({"status": "success", "count": len(data)}, ensure_ascii=False).encode('utf-8'))
-            except Exception as e:
-                self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
-        elif self.path == '/':
-            self.path = '/index.html'
-            return SimpleHTTPRequestHandler.do_GET(self)
-        else:
-            return SimpleHTTPRequestHandler.do_GET(self)
-    
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+
     def do_POST(self):
-        if self.path == '/api/cafes':
+        if self.path == '/api/blog-search':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
-            cafes = json.loads(post_data.decode('utf-8'))
+            data = json.loads(post_data.decode('utf-8'))
             
-            results = []
-            for cafe in cafes:
-                result = {
-                    "name": cafe.get("name"),
-                    "address": cafe.get("address"),
-                    "phone": cafe.get("phone", ""),
-                    "latitude": cafe.get("latitude"),
-                    "longitude": cafe.get("longitude"),
-                    "keywords": cafe.get("keywords", {}),
-                    "blog_count": cafe.get("blog_count", 0),
-                    "category": cafe.get("category", "relax")
-                }
-                results.append(result)
+            cafe_name = data.get('name', '')
+            cafe_address = data.get('address', '')
             
-            save_cafes(results)
+            result = analyze_blog_content(cafe_name, cafe_address)
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            self.wfile.write(json.dumps({"status": "success", "count": len(results)}).encode('utf-8'))
+            self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
         else:
-            self.send_response(404)
-            self.end_headers()
+            self.send_error(404)
 
-init_db()
-print('🚀 Venue app running at http://localhost:5000')
-print('📊 Database: venue.db')
-print('🔄 Refresh data: http://localhost:5000/api/refresh')
-HTTPServer(('', 5000), Handler).serve_forever()
+    def do_GET(self):
+        if self.path == '/':
+            self.path = '/index.html'
+        return SimpleHTTPRequestHandler.do_GET(self)
+
+if __name__ == '__main__':
+    print("🚀 Venue app running at http://localhost:5000")
+    print("📊 Database: venue.db")
+    print("🔄 Refresh data: http://localhost:5000/api/refresh")
+    HTTPServer(('', 5000), Handler).serve_forever()

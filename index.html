@@ -1,45 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Venue - Cafe Finder</title>
+    <title>CoffeeMap</title>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; overflow: hidden; }
-        
-        .filter-bar {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: white;
-            padding: 12px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            z-index: 1000;
-        }
-        
-        .filter-chips {
-            display: flex;
-            gap: 8px;
-        }
-        
-        .chip {
-            padding: 8px 16px;
-            border-radius: 20px;
-            border: 2px solid #e0e0e0;
-            background: white;
-            color: #666;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            user-select: none;
-        }
-        
-        .chip:hover { border-color: #4CAF50; }
-        .chip.selected { background: #4CAF50; border-color: #4CAF50; color: white; }
-        
+        body { font-family: sans-serif; }
         #map { width: 100%; height: 100vh; }
         
         .sidebar {
@@ -52,346 +18,208 @@
             box-shadow: -2px 0 8px rgba(0,0,0,0.1);
             z-index: 999;
             overflow-y: auto;
-            transition: transform 0.3s;
         }
-        
-        .sidebar.collapsed { transform: translateX(100%); }
         
         .sidebar-header {
             padding: 20px;
             border-bottom: 1px solid #e0e0e0;
-            position: sticky;
-            top: 0;
             background: white;
-            z-index: 1;
         }
-        
-        .sidebar-title { font-size: 18px; font-weight: 600; color: #222; }
-        .sidebar-count { font-size: 13px; color: #666; margin-top: 4px; }
-        
-        .cafe-list { padding: 0; }
         
         .cafe-item {
             padding: 16px 20px;
             border-bottom: 1px solid #f0f0f0;
             cursor: pointer;
-            transition: background 0.2s;
         }
         
         .cafe-item:hover { background: #f9f9f9; }
-        .cafe-item.active { background: #e8f5e9; }
         
         .cafe-header {
             display: flex;
             gap: 12px;
-            margin-bottom: 8px;
+            align-items: center;
         }
         
-        .cafe-thumb {
-            width: 80px;
-            height: 80px;
-            border-radius: 8px;
-            background: #e0e0e0;
+        .signal-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
             flex-shrink: 0;
-            object-fit: cover;
         }
         
-        .cafe-info { flex: 1; }
-        .cafe-name { font-size: 15px; font-weight: 600; color: #222; margin-bottom: 4px; }
-        .cafe-address { font-size: 12px; color: #666; margin-bottom: 8px; }
+        .signal-green { background: #4CAF50; }
+        .signal-yellow { background: #FFC107; }
+        .signal-red { background: #F44336; }
+        .signal-gray { background: #9E9E9E; }
         
-        .vibe-tags {
+        .cafe-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+        .cafe-address { font-size: 12px; color: #666; }
+        
+        .cafe-indicators {
             display: flex;
-            gap: 6px;
+            gap: 8px;
             flex-wrap: wrap;
-        }
-        
-        .vibe-tag {
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 500;
-            background: #f0f0f0;
-            color: #555;
-        }
-        
-        .vibe-tag.green { background: #e8f5e9; color: #2e7d32; }
-        
-        .cafe-details {
             margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid #f0f0f0;
-            font-size: 12px;
-            color: #666;
         }
         
-        .detail-item {
-            display: inline-block;
-            margin-right: 12px;
-            margin-top: 4px;
+        .indicator {
+            font-size: 11px;
+            padding: 4px 8px;
+            background: #f5f5f5;
+            border-radius: 12px;
         }
-        
-        .toggle-btn {
-            position: absolute;
-            top: 50%;
-            right: 380px;
-            transform: translateY(-50%);
-            background: white;
-            border: none;
-            padding: 12px 8px;
-            border-radius: 8px 0 0 8px;
-            box-shadow: -2px 0 8px rgba(0,0,0,0.1);
-            cursor: pointer;
-            z-index: 998;
-            transition: right 0.3s;
-        }
-        
-        .toggle-btn.collapsed { right: 0; border-radius: 0 8px 8px 0; box-shadow: 2px 0 8px rgba(0,0,0,0.1); }
         
         .custom-marker {
-            font-size: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             cursor: pointer;
-        }
-
-        .info-bubble {
             position: relative;
-            padding: 15px;
-            min-width: 250px;
+        }
+        
+        .marker-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
-
-        .info-bubble::after {
-            content: '';
-            position: absolute;
-            bottom: -10px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border-left: 12px solid transparent;
-            border-right: 12px solid transparent;
-            border-top: 12px solid white;
-            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1));
+        
+        .marker-icon:hover {
+            transform: scale(1.15);
         }
-
-        .info-bubble img {
-            width: 100%;
-            height: 120px;
-            object-fit: cover;
-            border-radius: 8px;
-            margin-bottom: 10px;
+        
+        .marker-icon.green { 
+            border: 3px solid #4CAF50;
+            z-index: 1000 !important;
         }
-
-        .info-bubble strong {
-            font-size: 15px;
-            color: #222;
+        .marker-icon.yellow { 
+            border: 3px solid #FFC107;
+            z-index: 900 !important;
         }
-
-        .info-bubble small {
-            color: #666;
+        .marker-icon.red { 
+            border: 3px solid #F44336;
+            z-index: 800 !important;
         }
-
-        .info-vibe-tags {
-            margin-top: 8px;
+        .marker-icon.gray { 
+            border: 3px solid #9E9E9E;
+            z-index: 700 !important;
         }
-
-        .info-vibe-tag {
-            display: inline-block;
-            padding: 3px 8px;
-            background: #e8f5e9;
-            color: #2e7d32;
-            border-radius: 10px;
+        
+        .marker-icon.green.active { background: #4CAF50; }
+        .marker-icon.yellow.active { background: #FFC107; }
+        .marker-icon.red.active { background: #F44336; }
+        .marker-icon.gray.active { background: #9E9E9E; }
+        
+        .marker-icon::before {
+            content: '☕';
+            font-size: 24px;
+            display: block;
+        }
+        
+        .marker-icon.green::before { color: #4CAF50; }
+        .marker-icon.yellow::before { color: #FFC107; }
+        .marker-icon.red::before { color: #F44336; }
+        .marker-icon.gray::before { color: #9E9E9E; }
+        
+        .marker-icon.active::before {
+            color: white;
+        }
+        
+        .marker-score {
             font-size: 11px;
-            margin: 2px;
+            font-weight: bold;
+            margin-top: -3px;
+            color: #333;
         }
-
-        .info-details {
-            margin-top: 8px;
-            font-size: 12px;
-            color: #666;
+        
+        .marker-icon.active .marker-score {
+            color: white;
+        }
+        
+        .marker-name {
+            font-size: 11px;
+            font-weight: 600;
+            color: #333;
+            background: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-top: 4px;
+            white-space: nowrap;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .marker-name.hidden {
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div class="filter-bar">
-        <div class="filter-chips">
-            <div class="chip selected" data-category="all">All</div>
-            <div class="chip" data-category="work">💼 Work</div>
-            <div class="chip" data-category="relax">☕ Relax</div>
-            <div class="chip" data-category="nature">🌿 Nature</div>
-            <div class="chip" data-category="unique">✨ Unique</div>
-        </div>
-    </div>
-    
-    <button class="toggle-btn" onclick="toggleSidebar()">☰</button>
-    
-    <div class="sidebar" id="sidebar">
+    <div class="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-title">Cafes in Anyang</div>
-            <div class="sidebar-count" id="cafeCount">Loading...</div>
+            <div style="font-size:18px;font-weight:600;">Cafes</div>
+            <div id="cafeCount" style="font-size:13px;color:#666;margin-top:4px;">Loading...</div>
         </div>
-        <div class="cafe-list" id="cafeList"></div>
+        <div id="cafeList"></div>
     </div>
     
     <div id="map"></div>
 
     <script src="config.js"></script>
+    <script src="http://dapi.kakao.com/v2/maps/sdk.js?appkey=1b39ab278b34720c916eff1fe31ea422&libraries=services"></script>
     <script>
-        // Dynamically load Kakao Maps SDK with API key from config
-        const script = document.createElement('script');
-        script.type = 'text/javascript';
-        script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${CONFIG.KAKAO_API_KEY}&libraries=services,clusterer&autoload=false`;
-        document.head.appendChild(script);
-    </script>
-    <script>
-        const ANYANG_CENTER = { lat: 37.3943, lng: 126.9568 };
-        let map, clusterer, selectedCategory = 'all', allCafes = [], markers = [], currentInfowindow = null;
-
-        function enrichCafeData(cafe, category) {
-            const mockPhotos = [
-                'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=200',
-                'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=200',
-                'https://images.unsplash.com/photo-1445116572660-236099ec97a0?w=200',
-                'https://images.unsplash.com/photo-1559496417-e7f25c2c0c5e?w=200'
-            ];
-            
-            cafe.photo = mockPhotos[Math.floor(Math.random() * mockPhotos.length)];
-            cafe.vibeTags = [];
-            
-            if (category === 'work') {
-                cafe.outlets = Math.floor(Math.random() * 20) + 5;
-                cafe.wifiSpeed = Math.floor(Math.random() * 100) + 50 + 'Mbps';
-                cafe.seating = Math.floor(Math.random() * 50) + 20;
-                cafe.vibeTags = ['Quiet', 'WiFi', 'Outlets'];
-            } else if (category === 'unique') {
-                const themes = ['Cat Cafe', 'Dog Cafe', 'Book Cafe', 'Vintage', 'Minimalist'];
-                cafe.theme = themes[Math.floor(Math.random() * themes.length)];
-                cafe.specialMenu = ['Signature Latte', 'Handmade Dessert', 'Organic Tea'][Math.floor(Math.random() * 3)];
-                cafe.vibeTags = [cafe.theme, 'Instagram-worthy'];
-            } else if (category === 'nature') {
-                cafe.vibeTags = ['Garden', 'Outdoor', 'Fresh Air'];
+        console.log('=== 스크립트 시작 ===');
+        
+        let map, allCafes = [], markers = [], activeMarkerIdx = null;
+        
+        window.addEventListener('load', function() {
+            console.log('페이지 로드됨');
+            if (typeof kakao !== 'undefined' && kakao.maps) {
+                kakao.maps.load(initMap);
             } else {
-                cafe.vibeTags = ['Cozy', 'Relaxing'];
+                console.error('카카오 맵 로드 실패');
             }
+        });
+        
+        function initMap() {
+            console.log('지도 초기화');
             
-            if (Math.random() > 0.5) cafe.vibeTags.push('Pet-friendly');
-            
-            return cafe;
-        }
-
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const btn = document.querySelector('.toggle-btn');
-            sidebar.classList.toggle('collapsed');
-            btn.classList.toggle('collapsed');
-        }
-
-        function renderCafeList(cafes) {
-            const list = document.getElementById('cafeList');
-            document.getElementById('cafeCount').textContent = `${cafes.length} cafes found`;
-            
-            list.innerHTML = cafes.map((cafe, idx) => `
-                <div class="cafe-item" onclick="selectCafe(${idx})">
-                    <div class="cafe-header">
-                        <img src="${cafe.photo}" class="cafe-thumb" alt="${cafe.name}">
-                        <div class="cafe-info">
-                            <div class="cafe-name">${cafe.name}</div>
-                            <div class="cafe-address">${cafe.address}</div>
-                            <div class="vibe-tags">
-                                ${cafe.vibeTags.map(tag => `<span class="vibe-tag ${tag === 'WiFi' || tag === 'Outlets' ? 'green' : ''}">${tag}</span>`).join('')}
-                            </div>
-                        </div>
-                    </div>
-                    ${cafe.outlets ? `
-                        <div class="cafe-details">
-                            <span class="detail-item">🔌 ${cafe.outlets} outlets</span>
-                            <span class="detail-item">📶 ${cafe.wifiSpeed}</span>
-                            <span class="detail-item">💺 ${cafe.seating} seats</span>
-                        </div>
-                    ` : ''}
-                    ${cafe.theme ? `
-                        <div class="cafe-details">
-                            <span class="detail-item">🎨 ${cafe.theme}</span>
-                            <span class="detail-item">☕ ${cafe.specialMenu}</span>
-                        </div>
-                    ` : ''}
-                </div>
-            `).join('');
-        }
-
-        function selectCafe(idx) {
-            document.querySelectorAll('.cafe-item').forEach((el, i) => {
-                el.classList.toggle('active', i === idx);
-            });
-            
-            const cafe = allCafes[idx];
-            map.setCenter(new kakao.maps.LatLng(cafe.latitude, cafe.longitude));
-            map.setLevel(3);
-            
-            const markerContent = markers[idx].getContent();
-            markerContent.click();
-        }
-
-        kakao.maps.load(function() {
             map = new kakao.maps.Map(document.getElementById('map'), {
-                center: new kakao.maps.LatLng(ANYANG_CENTER.lat, ANYANG_CENTER.lng),
+                center: new kakao.maps.LatLng(37.3943, 126.9568),
                 level: 5
             });
-
-            clusterer = new kakao.maps.MarkerClusterer({
-                map: map,
-                averageCenter: true,
-                minLevel: 5,
-                styles: [{
-                    width: '50px', height: '50px',
-                    background: '#4CAF50',
-                    borderRadius: '50%',
-                    color: 'white',
-                    textAlign: 'center',
-                    fontWeight: 'bold',
-                    lineHeight: '50px',
-                    border: '3px solid white',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-                }]
-            });
-
-            kakao.maps.event.addListener(map, 'idle', function() {
-                searchCafes();
-            });
-
+            
+            kakao.maps.event.addListener(map, 'idle', searchCafes);
             searchCafes();
-        });
-
-        document.querySelectorAll('.chip').forEach(chip => {
-            chip.addEventListener('click', () => {
-                document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
-                chip.classList.add('selected');
-                selectedCategory = chip.dataset.category;
-                searchCafes();
-            });
-        });
-
+        }
+        
         function searchCafes() {
+            console.log('카페 검색 시작');
             const ps = new kakao.maps.services.Places();
-            const keyword = selectedCategory === 'all' ? '카페' : getCategoryKeyword(selectedCategory);
             const center = map.getCenter();
             
-            ps.keywordSearch(keyword, (data, status) => {
+            ps.keywordSearch('카페', (data, status) => {
+                console.log('검색 결과:', status, data ? data.length : 0);
                 if (status === kakao.maps.services.Status.OK) {
-                    allCafes = data.map(place => enrichCafeData({
+                    allCafes = data.map(place => ({
                         name: place.place_name,
                         address: place.address_name,
                         phone: place.phone || '',
                         latitude: parseFloat(place.y),
                         longitude: parseFloat(place.x),
-                        category: selectedCategory
-                    }, selectedCategory));
-                    
-                    displayMarkers(allCafes);
+                        workScore: 0  // 초기값
+                    }));
                     renderCafeList(allCafes);
-                    saveCafesToBackend(allCafes);
+                    displayMarkers(allCafes);
                 }
             }, {
                 location: new kakao.maps.LatLng(center.getLat(), center.getLng()),
@@ -399,70 +227,336 @@
                 category_group_code: 'CE7'
             });
         }
-
-        function getCategoryKeyword(category) {
-            const keywords = {
-                work: '카페 노트북',
-                relax: '카페 힐링',
-                nature: '카페 정원',
-                unique: '카페 감성'
-            };
-            return keywords[category] || '카페';
+        
+        function sortAndRenderCafes() {
+            // 작업 점수 순으로 정렬
+            const sorted = [...allCafes].sort((a, b) => {
+                const scoreA = a.detailData ? a.detailData.workScore : 0;
+                const scoreB = b.detailData ? b.detailData.workScore : 0;
+                return scoreB - scoreA;
+            });
+            
+            const list = document.getElementById('cafeList');
+            document.getElementById('cafeCount').textContent = sorted.length + ' cafes';
+            
+            list.innerHTML = sorted.map((cafe) => {
+                const idx = allCafes.indexOf(cafe);
+                const data = cafe.detailData;
+                const signalColor = data ? data.signalColor : 'gray';
+                
+                let indicatorsHtml = '<div class="indicator">분석중...</div>';
+                if (data) {
+                    let html = '';
+                    if (data.workScore > 0) html += '<div class="indicator">💼 ' + data.workScore + '/10</div>';
+                    if (data.outletLevel !== '정보 없음') html += '<div class="indicator">🔌 ' + data.outletLevel + '</div>';
+                    if (data.noiseLevel !== '정보 없음') html += '<div class="indicator">🔇 ' + data.noiseLevel + '</div>';
+                    if (data.hasWifi) html += '<div class="indicator">📶 WiFi</div>';
+                    if (data.blogCount > 0) html += '<div class="indicator">📝 ' + data.blogCount + '</div>';
+                    indicatorsHtml = html || '<div class="indicator">정보 없음</div>';
+                }
+                
+                return `
+                    <div class="cafe-item" onclick="showCafeDetail(${idx})">
+                        <div class="cafe-header">
+                            <div class="signal-dot signal-${signalColor}"></div>
+                            <div>
+                                <div class="cafe-name">${cafe.name}</div>
+                                <div class="cafe-address">${cafe.address}</div>
+                            </div>
+                        </div>
+                        <div class="cafe-indicators">${indicatorsHtml}</div>
+                    </div>
+                `;
+            }).join('');
         }
-
+        
+        function renderCafeList(cafes) {
+            console.log('리스트 렌더링:', cafes.length);
+            const list = document.getElementById('cafeList');
+            document.getElementById('cafeCount').textContent = cafes.length + ' cafes';
+            
+            list.innerHTML = cafes.map((cafe, idx) => `
+                <div class="cafe-item" onclick="showCafeDetail(${idx})">
+                    <div class="cafe-header">
+                        <div class="signal-dot signal-gray" id="signal-${idx}"></div>
+                        <div>
+                            <div class="cafe-name">${cafe.name}</div>
+                            <div class="cafe-address">${cafe.address}</div>
+                        </div>
+                    </div>
+                    <div class="cafe-indicators" id="indicators-${idx}">
+                        <div class="indicator">분석중...</div>
+                    </div>
+                </div>
+            `).join('');
+            
+            cafes.forEach((cafe, idx) => loadIndicators(cafe, idx));
+        }
+        
+        function showCafeDetail(idx) {
+            const cafe = allCafes[idx];
+            if (!cafe.detailData) {
+                alert('데이터 로딩 중입니다. 잠시 후 다시 시도해주세요.');
+                return;
+            }
+            
+            // 이전 활성 마커 비활성화
+            if (activeMarkerIdx !== null) {
+                const prevMarker = document.getElementById('marker-' + activeMarkerIdx);
+                if (prevMarker) prevMarker.classList.remove('active');
+            }
+            
+            // 현재 마커 활성화
+            const currentMarker = document.getElementById('marker-' + idx);
+            if (currentMarker) currentMarker.classList.add('active');
+            activeMarkerIdx = idx;
+            
+            showModal(cafe, cafe.detailData);
+        }
+        
+        function showModal(cafe, data) {
+            let html = '<h2 style="margin-bottom:20px;">' + cafe.name + '</h2>';
+            
+            // 카공 지표 카드
+            html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:20px 0;">';
+            
+            if (data.workScore > 0) {
+                html += '<div style="padding:16px;background:#e8f5e9;border-radius:8px;text-align:center;">' +
+                    '<div style="font-size:24px;">💼</div>' +
+                    '<div style="font-size:20px;font-weight:bold;margin:8px 0;">' + data.workScore + '/10</div>' +
+                    '<div style="font-size:12px;color:#666;">작업 적합도</div></div>';
+            }
+            
+            if (data.outletLevel !== '정보 없음') {
+                html += '<div style="padding:16px;background:#fff3e0;border-radius:8px;text-align:center;">' +
+                    '<div style="font-size:24px;">🔌</div>' +
+                    '<div style="font-size:14px;font-weight:bold;margin:8px 0;">' + data.outletLevel + '</div>' +
+                    '<div style="font-size:12px;color:#666;">콘센트</div></div>';
+            }
+            
+            if (data.noiseLevel !== '정보 없음') {
+                html += '<div style="padding:16px;background:#e3f2fd;border-radius:8px;text-align:center;">' +
+                    '<div style="font-size:24px;">🔇</div>' +
+                    '<div style="font-size:14px;font-weight:bold;margin:8px 0;">' + data.noiseLevel + '</div>' +
+                    '<div style="font-size:12px;color:#666;">소음 레벨</div></div>';
+            }
+            
+            if (data.tableHeight !== '정보 없음') {
+                html += '<div style="padding:16px;background:#f3e5f5;border-radius:8px;text-align:center;">' +
+                    '<div style="font-size:24px;">📏</div>' +
+                    '<div style="font-size:14px;font-weight:bold;margin:8px 0;">' + data.tableHeight + '</div>' +
+                    '<div style="font-size:12px;color:#666;">테이블 높이</div></div>';
+            }
+            
+            if (data.spaceLevel && data.spaceLevel !== '정보 없음') {
+                html += '<div style="padding:16px;background:#fff9c4;border-radius:8px;text-align:center;">' +
+                    '<div style="font-size:24px;">📐</div>' +
+                    '<div style="font-size:14px;font-weight:bold;margin:8px 0;">' + data.spaceLevel + '</div>' +
+                    '<div style="font-size:12px;color:#666;">공간감</div></div>';
+            }
+            
+            html += '</div>';
+            
+            // 기본 정보
+            html += '<div style="margin:20px 0;line-height:1.8;background:#f5f5f5;padding:16px;border-radius:8px;">';
+            html += '<div>📍 ' + cafe.address + '</div>';
+            if (cafe.phone) html += '<div>📞 ' + cafe.phone + '</div>';
+            if (data.hasWifi) html += '<div>📶 WiFi 가능</div>';
+            if (data.hasParking) html += '<div>🅿️ 주차 가능</div>';
+            if (data.timeLimit !== '정보 없음') html += '<div>⏰ ' + data.timeLimit + '</div>';
+            html += '</div>';
+            
+            // 키워드 분석
+            if (data.keywords && Object.keys(data.keywords).length > 0) {
+                html += '<div style="margin:20px 0;"><h3 style="font-size:14px;margin-bottom:10px;">📊 블로그 키워드 분석</h3>';
+                html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+                for (let key in data.keywords) {
+                    if (data.keywords[key] > 0) {
+                        html += '<span style="padding:6px 12px;background:#e0e0e0;border-radius:16px;font-size:12px;">' + 
+                            key + ' (' + data.keywords[key] + ')</span>';
+                    }
+                }
+                html += '</div></div>';
+            }
+            
+            // 블로그 리뷰
+            if (data.blogItems && data.blogItems.length > 0) {
+                html += '<div style="margin-top:20px;"><h3 style="font-size:14px;margin-bottom:10px;">📝 블로그 리뷰 (' + data.blogItems.length + ')</h3>';
+                data.blogItems.forEach(function(item, i) {
+                    html += '<a href="' + item.url + '" target="_blank" style="display:block;padding:12px;margin:8px 0;background:#f9f9f9;border-radius:8px;text-decoration:none;color:#333;transition:background 0.2s;border-left:3px solid #4CAF50;" onmouseover="this.style.background=\'#f0f0f0\'" onmouseout="this.style.background=\'#f9f9f9\'">' +
+                        '<div style="font-weight:600;font-size:13px;margin-bottom:6px;color:#222;">' + item.title + '</div>' +
+                        '<div style="font-size:12px;color:#666;line-height:1.4;">' + item.description + '</div>' +
+                        '</a>';
+                });
+                html += '</div>';
+            } else if (data.blogUrls && data.blogUrls.length > 0) {
+                // 하위 호환성
+                html += '<div style="margin-top:20px;"><h3 style="font-size:14px;margin-bottom:10px;">📝 블로그 리뷰</h3>';
+                data.blogUrls.forEach(function(url, i) {
+                    html += '<a href="' + url + '" target="_blank" style="display:block;padding:12px;margin:8px 0;background:#f0f0f0;border-radius:6px;text-decoration:none;color:#333;transition:background 0.2s;" onmouseover="this.style.background=\'#e0e0e0\'" onmouseout="this.style.background=\'#f0f0f0\'">📝 블로그 리뷰 ' + (i + 1) + '</a>';
+                });
+                html += '</div>';
+            }
+            
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;';
+            modal.innerHTML = '<div style="background:white;max-width:600px;max-height:80vh;overflow-y:auto;border-radius:12px;padding:30px;position:relative;width:100%;">' +
+                '<span style="position:absolute;top:15px;right:20px;font-size:32px;cursor:pointer;color:#999;line-height:1;" onclick="this.parentElement.parentElement.remove()">×</span>' +
+                html + '</div>';
+            modal.onclick = function(e) { 
+                if (e.target === modal) modal.remove(); 
+            };
+            document.body.appendChild(modal);
+        }
+        
         function displayMarkers(cafes) {
-            clusterer.clear();
+            // 기존 마커 제거
+            markers.forEach(m => m.setMap(null));
             markers = [];
             
             cafes.forEach((cafe, idx) => {
                 const content = document.createElement('div');
-                content.innerHTML = '☕';
                 content.className = 'custom-marker';
+                content.innerHTML = '<div class="marker-icon gray" id="marker-' + idx + '">' +
+                    '<div class="marker-score">-</div>' +
+                    '</div>' +
+                    '<div class="marker-name hidden" id="marker-name-' + idx + '">' + cafe.name + '</div>';
                 
                 const marker = new kakao.maps.CustomOverlay({
                     position: new kakao.maps.LatLng(cafe.latitude, cafe.longitude),
-                    content: content
+                    content: content,
+                    yAnchor: 0.5,
+                    zIndex: 700
                 });
                 
                 marker.setMap(map);
+                markers.push(marker);
                 
-                content.onclick = () => {
-                    if (currentInfowindow) {
-                        currentInfowindow.setMap(null);
+                content.onclick = function() {
+                    // 이전 활성 마커 비활성화
+                    if (activeMarkerIdx !== null) {
+                        const prevMarker = document.getElementById('marker-' + activeMarkerIdx);
+                        if (prevMarker) prevMarker.classList.remove('active');
                     }
                     
-                    const infoContent = document.createElement('div');
-                    infoContent.className = 'info-bubble';
-                    infoContent.innerHTML = `
-                        <img src="${cafe.photo}" alt="${cafe.name}">
-                        <strong>${cafe.name}</strong><br>
-                        <small>${cafe.address}</small>
-                        <div class="info-vibe-tags">
-                            ${cafe.vibeTags.map(tag => `<span class="info-vibe-tag">${tag}</span>`).join('')}
-                        </div>
-                        ${cafe.outlets ? `<div class="info-details">🔌 ${cafe.outlets} outlets | 📶 ${cafe.wifiSpeed} | 💺 ${cafe.seating} seats</div>` : ''}
-                        ${cafe.theme ? `<div class="info-details">🎨 ${cafe.theme} | ☕ ${cafe.specialMenu}</div>` : ''}
-                    `;
+                    // 현재 마커 활성화
+                    const currentMarker = document.getElementById('marker-' + idx);
+                    if (currentMarker) currentMarker.classList.add('active');
+                    activeMarkerIdx = idx;
                     
-                    currentInfowindow = new kakao.maps.CustomOverlay({
-                        content: infoContent,
-                        position: new kakao.maps.LatLng(cafe.latitude, cafe.longitude),
-                        yAnchor: 1.1
-                    });
-                    
-                    currentInfowindow.setMap(map);
+                    if (cafe.detailData) {
+                        showModal(cafe, cafe.detailData);
+                    } else {
+                        alert('데이터 로딩 중입니다. 잠시 후 다시 시도해주세요.');
+                    }
                 };
-                
-                markers.push(marker);
             });
         }
-
-        function saveCafesToBackend(cafes) {
-            fetch('/api/cafes', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(cafes)
-            }).catch(err => console.log('Cache save failed:', err));
+        
+        function updateMarker(idx, data) {
+            const markerIcon = document.getElementById('marker-' + idx);
+            if (markerIcon && data) {
+                const oldColor = markerIcon.className.split(' ')[1];
+                const newColor = data.signalColor || 'gray';
+                markerIcon.className = 'marker-icon ' + newColor;
+                
+                // z-index 업데이트
+                const zIndexMap = { green: 1000, yellow: 900, red: 800, gray: 700 };
+                if (markers[idx]) {
+                    markers[idx].setZIndex(zIndexMap[newColor] || 700);
+                }
+                
+                const scoreEl = markerIcon.querySelector('.marker-score');
+                if (scoreEl && data.totalScore !== undefined) {
+                    scoreEl.textContent = data.totalScore.toFixed(1);
+                }
+                
+                // 평점이 있으면 카페 이름 표시
+                const nameEl = document.getElementById('marker-name-' + idx);
+                if (nameEl && data.totalScore > 0) {
+                    nameEl.classList.remove('hidden');
+                }
+            }
+        }
+        
+        async function loadIndicators(cafe, idx) {
+            try {
+                const response = await fetch('http://localhost:5000/api/blog-search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: cafe.name, address: cafe.address })
+                });
+                const data = await response.json();
+                
+                // 카페 객체에 데이터 저장
+                allCafes[idx].detailData = data;
+                
+                // 마커 업데이트
+                updateMarker(idx, data);
+                
+                const signalDot = document.getElementById('signal-' + idx);
+                if (signalDot) {
+                    signalDot.className = 'signal-dot signal-' + (data.signalColor || 'gray');
+                }
+                
+                const indicators = document.getElementById('indicators-' + idx);
+                if (indicators) {
+                    let html = '';
+                    if (data.workScore > 0) html += '<div class="indicator">💼 ' + data.workScore + '/10</div>';
+                    if (data.outletLevel !== '정보 없음') html += '<div class="indicator">🔌 ' + data.outletLevel + '</div>';
+                    if (data.noiseLevel !== '정보 없음') html += '<div class="indicator">🔇 ' + data.noiseLevel + '</div>';
+                    if (data.hasWifi) html += '<div class="indicator">📶 WiFi</div>';
+                    if (data.blogCount > 0) html += '<div class="indicator">📝 ' + data.blogCount + '</div>';
+                    
+                    indicators.innerHTML = html || '<div class="indicator">정보 없음</div>';
+                }
+                
+                // 모든 카페 데이터 로드 완료 확인 후 정렬
+                const loadedCount = allCafes.filter(c => c.detailData).length;
+                if (loadedCount === allCafes.length) {
+                    sortAndRenderCafes();
+                }
+            } catch (err) {
+                console.log('지표 로드 실패:', cafe.name, err);
+            }
+        }
+        
+        function sortAndRenderCafes() {
+            // 작업 점수 순으로 정렬
+            const sorted = [...allCafes].sort((a, b) => {
+                const scoreA = a.detailData ? a.detailData.workScore : 0;
+                const scoreB = b.detailData ? b.detailData.workScore : 0;
+                return scoreB - scoreA;
+            });
+            
+            const list = document.getElementById('cafeList');
+            
+            list.innerHTML = sorted.map((cafe) => {
+                const idx = allCafes.indexOf(cafe);
+                const data = cafe.detailData;
+                const signalColor = data ? data.signalColor : 'gray';
+                
+                let indicatorsHtml = '';
+                if (data) {
+                    if (data.workScore > 0) indicatorsHtml += '<div class="indicator">💼 ' + data.workScore + '/10</div>';
+                    if (data.outletLevel && data.outletLevel !== '정보 없음') indicatorsHtml += '<div class="indicator">🔌 ' + data.outletLevel + '</div>';
+                    if (data.noiseLevel && data.noiseLevel !== '정보 없음') indicatorsHtml += '<div class="indicator">🔇 ' + data.noiseLevel + '</div>';
+                    if (data.spaceLevel && data.spaceLevel !== '정보 없음') indicatorsHtml += '<div class="indicator">📐 ' + data.spaceLevel + '</div>';
+                    if (data.hasWifi) indicatorsHtml += '<div class="indicator">📶 WiFi</div>';
+                    if (data.blogCount > 0) indicatorsHtml += '<div class="indicator">📝 ' + data.blogCount + '</div>';
+                    if (!indicatorsHtml) indicatorsHtml = '<div class="indicator">정보 없음</div>';
+                }
+                
+                return '<div class="cafe-item" onclick="showCafeDetail(' + idx + ')">' +
+                    '<div class="cafe-header">' +
+                    '<div class="signal-dot signal-' + signalColor + '"></div>' +
+                    '<div>' +
+                    '<div class="cafe-name">' + cafe.name + '</div>' +
+                    '<div class="cafe-address">' + cafe.address + '</div>' +
+                    '</div></div>' +
+                    '<div class="cafe-indicators">' + indicatorsHtml + '</div>' +
+                    '</div>';
+            }).join('');
         }
     </script>
 </body>

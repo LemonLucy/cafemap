@@ -1,72 +1,49 @@
-# Venue - Cafe Finder
+# CoffeeMap
 
-A Google Maps-style cafe discovery app with Starbucks-inspired design.
+카카오 맵 기반 카페 검색 및 블로그 리뷰 분석 서비스
 
-## Features
-- 🗺️ Interactive Kakao Map with marker clustering
-- ☕ Real-time cafe search based on map location
-- 🎨 Category filtering (Work, Relax, Nature, Unique)
-- 📋 Side panel with cafe details and photos
-- 💼 Work cafes show outlets, WiFi speed, seating
-- ✨ Unique cafes show themes and special menus
+## 실행 방법
 
-## Setup
-
-1. Clone the repository
 ```bash
-git clone <your-repo-url>
-cd coffeemap
+bash START_SERVERS.sh
 ```
 
-2. Set up frontend API key
-```bash
-cp config.example.js config.js
-# Edit config.js and add your Kakao Maps JavaScript API key
+브라우저에서 http://localhost:8000 접속
+
+## 주요 기능
+
+- 카카오 맵 기반 카페 검색
+- 네이버 블로그 리뷰 자동 수집
+- 블로그 이미지 다운로드
+- 작업 환경 분석 (콘센트, 작업 적합도)
+- 카페 테마 분석 (Cat Cafe, Dog Cafe, Book Cafe 등)
+
+## 파일 구조
+
+- `index.html` - 프론트엔드 (카카오 맵 UI)
+- `app_server.py` - 백엔드 서버 (포트 5000)
+- `config.js` - 카카오 API 키 설정
+- `database.py` - SQLite 데이터베이스
+- `test_server/` - 네이버 블로그 크롤링 모듈
+- `static/cafe_images/` - 다운로드된 카페 이미지
+
+## API 키 설정
+
+`.env` 파일:
+```
+NAVER_CLIENT_ID=your_client_id
+NAVER_CLIENT_SECRET=your_client_secret
 ```
 
-3. Set up backend API keys
-```bash
-cp .env.example .env
-# Edit .env and add your API keys
+`config.js` 파일:
+```javascript
+const CONFIG = {
+    KAKAO_API_KEY: 'your_kakao_key'
+};
 ```
 
-4. Run the server
-```bash
-# Option 1: Using the startup script (loads .env automatically)
-./start.sh
+## 서버 관리
 
-# Option 2: Manual
-export $(cat .env | grep -v '^#' | xargs)
-python3 app_server.py
-```
-
-5. Open http://localhost:5000
-
-## Getting Kakao API Key
-
-1. Go to https://developers.kakao.com
-2. Create an account and register your app
-3. Go to [App Settings] > [Platform] > Add Web Platform
-4. Register your domain (e.g., http://localhost:5000)
-5. Copy the JavaScript key from the top of the page
-
-## Tech Stack
-- Frontend: HTML, CSS, JavaScript
-- Map: Kakao Maps API
-- Backend: Python (SimpleHTTPServer)
-- Database: SQLite
-
-## Project Structure
-```
-coffeemap/
-├── index.html          # Main frontend UI
-├── app_server.py       # Backend server (main)
-├── database.py         # Database operations
-├── config.js           # Frontend API key (not in git)
-├── config.example.js   # Config template
-├── .env                # Backend API keys (not in git)
-├── .env.example        # Env template
-├── start.sh            # Startup script
-├── venue.db            # SQLite database (not in git)
-└── README.md           # This file
-```
+- 시작: `bash START_SERVERS.sh`
+- 중지: `pkill -f app_server.py`
+- 로그: `tail -f server.log`
