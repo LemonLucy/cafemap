@@ -1,29 +1,197 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-    <title>CoffeeMap</title>
+    <title>CoffeeMap - 카공 최적화 카페 찾기</title>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="네이버 블로그 분석 기반 카공 최적화 카페 검색 서비스">
+    <meta name="theme-color" content="#4CAF50">
+    
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/icon.svg">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="CoffeeMap">
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: sans-serif; }
-        #map { width: 100%; height: 100vh; }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            position: fixed;
+            font-family: sans-serif;
+        }
+        
+        #map { 
+            width: 100%; 
+            height: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        /* 구글맵 스타일 검색바 */
+        .search-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            width: calc(100% - 40px);
+            max-width: 600px;
+        }
+        
+        .search-bar {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            gap: 12px;
+        }
+        
+        .search-bar input {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 16px;
+        }
+        
+        .search-bar .close-btn {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 20px;
+            color: #666;
+        }
         
         .sidebar {
-            position: absolute;
+            position: fixed;
             top: 0;
             right: 0;
             width: 380px;
-            height: 100vh;
+            height: 100%;
             background: white;
             box-shadow: -2px 0 8px rgba(0,0,0,0.1);
             z-index: 999;
+            overflow: hidden;
+            transition: transform 0.3s ease;
+            -webkit-overflow-scrolling: touch;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 모바일: 구글맵 스타일 하단 시트 */
+        @media (max-width: 768px) {
+            .search-container {
+                top: 10px;
+                width: calc(100% - 20px);
+            }
+            
+            .sidebar {
+                top: auto;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                width: 100%;
+                height: auto;
+                max-height: 80%;
+                border-radius: 16px 16px 0 0;
+                box-shadow: 0 -2px 16px rgba(0,0,0,0.2);
+                transform: translateY(calc(100% - 80px));
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            
+            .sidebar.collapsed {
+                transform: translateY(calc(100% - 80px));
+            }
+            
+            .sidebar.expanded {
+                transform: translateY(0);
+            }
+            
+            .sidebar-drag-handle {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 8px 0;
+                cursor: grab;
+                touch-action: none;
+                position: sticky;
+                top: 0;
+                background: white;
+                z-index: 100;
+                border-radius: 16px 16px 0 0;
+            }
+            
+            .sidebar-drag-handle::before {
+                content: '';
+                width: 40px;
+                height: 4px;
+                background: #dadce0;
+                border-radius: 2px;
+            }
+        }
+        
+        .sidebar-drag-handle {
+            display: none;
+            flex-shrink: 0;
+        }
+        
+        .sidebar-title {
+            padding: 16px 20px 0 20px;
+            background: white;
+            flex-shrink: 0;
+        }
+        
+        .sidebar-content {
+            flex: 1;
             overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
         
         .sidebar-header {
-            padding: 20px;
+            padding: 0 20px 16px 20px;
             border-bottom: 1px solid #e0e0e0;
             background: white;
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar-drag-handle {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 16px 0;
+                cursor: pointer;
+                position: sticky;
+                top: 0;
+                background: white;
+                z-index: 100;
+                border-radius: 16px 16px 0 0;
+            }
+            
+            .sidebar-drag-handle::before {
+                content: '';
+                width: 40px;
+                height: 4px;
+                background: #dadce0;
+                border-radius: 2px;
+            }
+            
+            .sidebar-title {
+                padding: 12px 16px 0 16px;
+                position: sticky;
+                top: 32px;
+                z-index: 99;
+            }
+            
+            .sidebar-header {
+                padding: 0 16px 12px 16px;
+            }
         }
         
         .sort-buttons {
@@ -43,6 +211,17 @@
             transition: all 0.2s;
         }
         
+        @media (max-width: 768px) {
+            .sort-btn {
+                padding: 10px 8px;
+                font-size: 11px;
+            }
+        }
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
         .sort-btn:hover {
             background: #f5f5f5;
         }
@@ -53,31 +232,20 @@
             border-color: #4CAF50;
         }
         
-        .search-box {
-            padding: 12px 20px;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        
-        .search-input {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        
-        .search-input:focus {
-            outline: none;
-            border-color: #4CAF50;
-        }
-        
         .cafe-item {
             padding: 16px 20px;
             border-bottom: 1px solid #f0f0f0;
             cursor: pointer;
         }
         
+        @media (max-width: 768px) {
+            .cafe-item {
+                padding: 14px 16px;
+            }
+        }
+        
         .cafe-item:hover { background: #f9f9f9; }
+        .cafe-item:active { background: #f0f0f0; }
         
         .cafe-header {
             display: flex;
@@ -216,20 +384,30 @@
     </style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="sidebar-header">
-            <div style="font-size:18px;font-weight:600;">Cafes</div>
-            <div id="cafeCount" style="font-size:13px;color:#666;margin-top:4px;">Loading...</div>
-            <div class="sort-buttons">
-                <button class="sort-btn active" onclick="sortCafes('score-high')">평점 높은순</button>
-                <button class="sort-btn" onclick="sortCafes('score-low')">평점 낮은순</button>
-                <button class="sort-btn" onclick="sortCafes('distance')">거리순</button>
+    <!-- 구글맵 스타일 검색바 -->
+    <div class="search-container">
+        <div class="search-bar">
+            <input type="text" id="topSearchInput" placeholder="Coffee" onkeyup="handleSearch(event)">
+            <span class="close-btn" onclick="clearSearch()">✕</span>
+        </div>
+    </div>
+
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-drag-handle"></div>
+        <div class="sidebar-title">
+            <div style="font-size:18px;font-weight:600;">Coffee</div>
+        </div>
+        <div class="sidebar-content">
+            <div class="sidebar-header">
+                <div id="cafeCount" style="font-size:13px;color:#666;margin-top:4px;">Loading...</div>
+                <div class="sort-buttons">
+                    <button class="sort-btn active" onclick="sortCafes('score-high')">평점 높은순</button>
+                    <button class="sort-btn" onclick="sortCafes('score-low')">평점 낮은순</button>
+                    <button class="sort-btn" onclick="sortCafes('distance')">거리순</button>
+                </div>
             </div>
+            <div id="cafeList"></div>
         </div>
-        <div class="search-box">
-            <input type="text" class="search-input" id="searchInput" placeholder="카페명 또는 지역 검색..." onkeyup="handleSearch(event)">
-        </div>
-        <div id="cafeList"></div>
     </div>
     
     <div id="map"></div>
@@ -242,6 +420,108 @@
         let map, allCafes = [], markers = [], activeMarkerIdx = null;
         let currentSort = 'score-high';
         let userLocation = null;
+        
+        // 검색 초기화
+        function clearSearch() {
+            document.getElementById('topSearchInput').value = '';
+            handleSearch({ key: 'Enter' });
+        }
+        
+        // 구글맵 스타일 드래그 핸들
+        let startY = 0;
+        let currentY = 0;
+        let isDragging = false;
+        const sidebar = document.getElementById('sidebar');
+        const dragHandle = document.querySelector('.sidebar-drag-handle');
+        const sidebarTitle = document.querySelector('.sidebar-title');
+        
+        console.log('sidebar:', sidebar);
+        console.log('dragHandle:', dragHandle);
+        console.log('sidebarTitle:', sidebarTitle);
+        
+        if (dragHandle) {
+            console.log('드래그 핸들 이벤트 등록');
+            
+            // 클릭 이벤트 추가
+            dragHandle.addEventListener('click', () => {
+                console.log('드래그 핸들 클릭');
+                sidebar.classList.toggle('expanded');
+                sidebar.classList.toggle('collapsed');
+            });
+            
+            let touchStartTime = 0;
+            let touchMoved = false;
+            
+            dragHandle.addEventListener('touchstart', e => {
+                console.log('touchstart');
+                startY = e.touches[0].clientY;
+                isDragging = true;
+                touchStartTime = Date.now();
+                touchMoved = false;
+                sidebar.style.transition = 'none';
+            }, { passive: true });
+            
+            dragHandle.addEventListener('touchmove', e => {
+                if (!isDragging) return;
+                console.log('touchmove');
+                touchMoved = true;
+                currentY = e.touches[0].clientY;
+                const deltaY = currentY - startY;
+                
+                if (deltaY > 0) {
+                    const newTransform = Math.min(deltaY, window.innerHeight * 0.8);
+                    sidebar.style.transform = `translateY(${newTransform}px)`;
+                }
+            }, { passive: true });
+            
+            dragHandle.addEventListener('touchend', e => {
+                if (!isDragging) return;
+                console.log('touchend');
+                isDragging = false;
+                sidebar.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+                
+                const touchDuration = Date.now() - touchStartTime;
+                
+                // 짧은 탭 (드래그 없이 클릭)
+                if (!touchMoved && touchDuration < 300) {
+                    console.log('드래그 핸들 탭');
+                    sidebar.classList.toggle('expanded');
+                    sidebar.classList.toggle('collapsed');
+                    sidebar.style.transform = '';
+                    return;
+                }
+                
+                const deltaY = currentY - startY;
+                if (deltaY > 100) {
+                    sidebar.classList.remove('expanded');
+                    sidebar.classList.add('collapsed');
+                    sidebar.style.transform = '';
+                } else {
+                    sidebar.classList.add('expanded');
+                    sidebar.classList.remove('collapsed');
+                    sidebar.style.transform = '';
+                }
+            }, { passive: true });
+        }
+        
+        // Coffee 타이틀 클릭으로 토글
+        if (sidebarTitle) {
+            console.log('타이틀 클릭 이벤트 등록');
+            sidebarTitle.addEventListener('click', () => {
+                console.log('타이틀 클릭');
+                sidebar.classList.toggle('expanded');
+                sidebar.classList.toggle('collapsed');
+            });
+        }
+
+        // Service Worker 등록
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(reg => console.log('Service Worker 등록 성공:', reg.scope))
+                    .catch(err => console.log('Service Worker 등록 실패:', err));
+            });
+        }
         
         window.addEventListener('load', function() {
             console.log('페이지 로드됨');
@@ -452,9 +732,15 @@
         }
         
         function handleSearch(event) {
-            if (event.key === 'Enter') {
-                const query = event.target.value.trim();
-                if (!query) return;
+            if (event.key === 'Enter' || !event.key) {
+                const query = (event.target?.value || document.getElementById('topSearchInput').value).trim();
+                if (!query) {
+                    // 검색어 없으면 현재 위치로 리셋
+                    if (userLocation) {
+                        map.setCenter(new kakao.maps.LatLng(userLocation.lat, userLocation.lng));
+                    }
+                    return;
+                }
                 
                 searchLocation(query);
             }
