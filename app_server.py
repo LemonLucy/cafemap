@@ -116,7 +116,8 @@ def analyze_blog_content(cafe_name, cafe_address):
         # 제주권
         '제주시', '제주', '서귀포시', '서귀포'
     ]
-    is_resort_area = any(area in cafe_address for area in resort_areas)
+    # 군/면으로 끝나는 지역도 휴양지로 취급
+    is_resort_area = any(area in cafe_address for area in resort_areas) or cafe_address.endswith('군') or cafe_address.endswith('면')
     
     # 네이버 블로그 검색 API 호출
     url = "https://openapi.naver.com/v1/search/blog.json"
