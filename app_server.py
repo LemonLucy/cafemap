@@ -488,7 +488,11 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 content_length = int(self.headers.get('Content-Length', 0))
                 if content_length == 0:
-                    self.send_error(400, "Empty request body")
+                    self.send_response(400)
+                    self.send_header('Content-type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Empty request body"}).encode('utf-8'))
                     return
                     
                 post_data = self.rfile.read(content_length)
@@ -503,13 +507,21 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_header('Content-type', 'application/json')
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
+                self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
             except json.JSONDecodeError as e:
-                self.send_error(400, f"Invalid JSON: {str(e)}")
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"Invalid JSON: {str(e)}"}).encode('utf-8'))
                 return
             except Exception as e:
-                self.send_error(500, f"Server error: {str(e)}")
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"Server error: {str(e)}"}).encode('utf-8'))
                 return
-            self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
         elif self.path == '/api/clear-cache':
             global blog_cache
             blog_cache.clear()
