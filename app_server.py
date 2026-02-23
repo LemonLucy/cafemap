@@ -485,19 +485,30 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == '/api/blog-search':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
-            
-            cafe_name = data.get('name', '')
-            cafe_address = data.get('address', '')
-            
-            result = analyze_blog_content(cafe_name, cafe_address)
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
+            try:
+                content_length = int(self.headers.get('Content-Length', 0))
+                if content_length == 0:
+                    self.send_error(400, "Empty request body")
+                    return
+                    
+                post_data = self.rfile.read(content_length)
+                data = json.loads(post_data.decode('utf-8'))
+                
+                cafe_name = data.get('name', '')
+                cafe_address = data.get('address', '')
+                
+                result = analyze_blog_content(cafe_name, cafe_address)
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+            except json.JSONDecodeError as e:
+                self.send_error(400, f"Invalid JSON: {str(e)}")
+                return
+            except Exception as e:
+                self.send_error(500, f"Server error: {str(e)}")
+                return
             self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
         elif self.path == '/api/clear-cache':
             global blog_cache
