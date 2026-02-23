@@ -15,6 +15,7 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "fsrn1wXmk3")
 # 메모리 캐시 (버전 추가로 캐시 무효화)
 blog_cache = {}
 CACHE_VERSION = "v18"  # 캐시 버전 (일반 단어는 지역명 필수)
+MAX_CACHE_SIZE = 100  # 최대 캐시 항목 수
 
 def get_cafe_image_from_naver(cafe_name):
     """네이버 이미지 검색 API로 카페 이미지 가져오기"""
@@ -448,6 +449,12 @@ def analyze_blog_content(cafe_name, cafe_address):
             "keywords": keywords,
             "totalScore": round(total_score, 1) if len(filtered_urls) > 0 else 0
         }
+        
+        # 캐시 크기 제한
+        if len(blog_cache) >= MAX_CACHE_SIZE:
+            # 가장 오래된 항목 삭제
+            oldest_key = next(iter(blog_cache))
+            del blog_cache[oldest_key]
         
         blog_cache[cache_key] = result
         return result
