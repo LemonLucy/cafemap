@@ -5,9 +5,9 @@ import urllib.parse
 import re
 import os
 import sys
-from database import init_db, save_cafes, get_cafes
 import requests
 from bs4 import BeautifulSoup
+from cache_db import init_cache_db, get_cached_result, save_cached_result, get_cache_stats
 
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "tr30Ch1tbJBqwNlv9svx")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "fsrn1wXmk3")
@@ -88,10 +88,11 @@ def search_naver_blog(query, display=5):
     return []
 
 def analyze_blog_content(cafe_name, cafe_address):
-    # 캐시 확인 (버전 포함)
-    cache_key = f"{CACHE_VERSION}_{cafe_name}_{cafe_address}"
-    if cache_key in blog_cache:
-        return blog_cache[cache_key]
+    # 캐시 확인 (Postgres → 메모리)
+    cached = get_cached_result(cafe_name, cafe_address, CACHE_VERSION)
+    if cached:
+        print(f"✅ Cache hit: {cafe_name}")
+        return cached
     
     # 대형 카페 브랜드 리스트
     major_brands = ['대형카페','스타벅스', '투썸플레이스', '투썸', '이디야', '커피빈', '할리스', '탐앤탐스', '파스쿠찌', '엔제리너스', '디저트39']
@@ -451,13 +452,8 @@ def analyze_blog_content(cafe_name, cafe_address):
             "totalScore": round(total_score, 1) if len(filtered_urls) > 0 else 0
         }
         
-        # 캐시 크기 제한
-        if len(blog_cache) >= MAX_CACHE_SIZE:
-            # 가장 오래된 항목 삭제
-            oldest_key = next(iter(blog_cache))
-            del blog_cache[oldest_key]
-        
-        blog_cache[cache_key] = result
+        # 캐시에 저장 (Postgres + 메모리)
+        save_cached_result(cafe_name, cafe_address, CACHE_VERSION, result)
         return result
         
     except Exception as e:
@@ -544,6 +540,13 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok", "message": "Cache cleared"}).encode('utf-8'))
+        elif self.path == '/api/cache-stats':
+            stats = get_cache_stats()
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(stats, ensure_ascii=False).encode('utf-8'))
         else:
             self.send_error(404)
 
@@ -555,6 +558,8 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     print(f"🚀 Venue app running at http://localhost:{port}")
-    print("📊 Database: venue.db")
-    print(f"🔄 Refresh data: http://localhost:{port}/api/refresh")
+    
+    # 캐시 DB 초기화
+    init_cache_db()
+    
     HTTPServer(('0.0.0.0', port), Handler).serve_forever()
