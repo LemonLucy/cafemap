@@ -81,8 +81,16 @@ def get_region_from_address(address):
     return 'unknown'
 
 def normalize_address(address):
-    """주소 정규화 (캐시 키 비교용)"""
-    return address.replace('특별시', '').replace('광역시', '').replace('도', '').replace(' ', '').strip()
+    """주소 정규화 (시/구 레벨까지만, 캐시 키 비교용)"""
+    # "경기도 안양시 동안구 관양동 1505" → "경기안양"
+    addr = address.replace('특별시', '').replace('광역시', '').replace('도', '').strip()
+    parts = addr.split()
+    if len(parts) >= 2:
+        # 첫 2개 부분만 (예: "경기 안양시" → "경기안양")
+        return ''.join(parts[:2]).replace('시', '').replace('구', '').replace(' ', '')
+    elif len(parts) == 1:
+        return parts[0].replace('시', '').replace('구', '').replace(' ', '')
+    return addr.replace(' ', '')
 
 def get_cached_result(cafe_name, cafe_address, cache_version):
     """캐시에서 결과 조회 (Postgres → 메모리 순)"""
