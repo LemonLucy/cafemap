@@ -70,49 +70,57 @@ def should_cache_to_postgres(cafe_address, total_score, hit_count=1):
 
 def get_region_from_address(address):
     """주소에서 지역 추출"""
+    # 주소 정규화
+    address = address.replace('특별시', '').replace('광역시', '').replace('도', '').strip()
     parts = address.split()
     if len(parts) > 0:
-        # "서울특별시" → "서울", "경기도 수원시" → "수원"
-        region = parts[0].replace('특별시', '').replace('광역시', '').replace('도', '')
+        # "서울 강남구" → "서울", "경기 안양시" → "안양"
         if len(parts) > 1 and '시' in parts[1]:
-            region = parts[1].replace('시', '')
-        return region
+            return parts[1].replace('시', '').strip()
+        return parts[0].strip()
     return 'unknown'
+
+def normalize_address(address):
+    """주소 정규화 (캐시 키 비교용)"""
+    return address.replace('특별시', '').replace('광역시', '').replace('도', '').replace(' ', '').strip()
 
 def get_cached_result(cafe_name, cafe_address, cache_version):
     """캐시에서 결과 조회 (Postgres → 메모리 순)"""
     # 1차: 메모리 캐시
     from app_server import blog_cache
-    cache_key = f"{cache_version}_{cafe_name}_{cafe_address}"
+    cache_key = f"{cache_version}_{cafe_name}_{normalize_address(cafe_address)}"
     if cache_key in blog_cache:
         return blog_cache[cache_key]
     
-    # 2차: Postgres
+    # 2차: Postgres (주소 정규화해서 검색)
     conn = get_db_connection()
     if not conn:
         return None
     
     try:
         with conn.cursor() as cur:
+            # 정규화된 주소로 검색
+            normalized_addr = normalize_address(cafe_address)
             cur.execute("""
-                SELECT result, hit_count FROM cafe_cache 
-                WHERE cafe_name = %s AND cafe_address = %s AND cache_version = %s
-            """, (cafe_name, cafe_address, cache_version))
+                SELECT result, hit_count, cafe_address FROM cafe_cache 
+                WHERE cafe_name = %s AND cache_version = %s
+            """, (cafe_name, cache_version))
             
-            row = cur.fetchone()
-            if row:
-                # 조회수 증가
-                cur.execute("""
-                    UPDATE cafe_cache 
-                    SET hit_count = hit_count + 1, updated_at = CURRENT_TIMESTAMP
-                    WHERE cafe_name = %s AND cafe_address = %s AND cache_version = %s
-                """, (cafe_name, cafe_address, cache_version))
-                conn.commit()
-                
-                # 메모리 캐시에도 저장
-                result = row['result']
-                blog_cache[cache_key] = result
-                return result
+            rows = cur.fetchall()
+            for row in rows:
+                if normalize_address(row['cafe_address']) == normalized_addr:
+                    # 조회수 증가
+                    cur.execute("""
+                        UPDATE cafe_cache 
+                        SET hit_count = hit_count + 1, updated_at = CURRENT_TIMESTAMP
+                        WHERE cafe_name = %s AND cafe_address = %s AND cache_version = %s
+                    """, (cafe_name, row['cafe_address'], cache_version))
+                    conn.commit()
+                    
+                    # 메모리 캐시에도 저장
+                    result = row['result']
+                    blog_cache[cache_key] = result
+                    return result
     except Exception as e:
         print(f"❌ Cache read error: {e}")
     finally:
@@ -124,8 +132,8 @@ def save_cached_result(cafe_name, cafe_address, cache_version, result):
     """결과를 캐시에 저장"""
     from app_server import blog_cache, MAX_CACHE_SIZE
     
-    # 메모리 캐시에 항상 저장
-    cache_key = f"{cache_version}_{cafe_name}_{cafe_address}"
+    # 메모리 캐시에 항상 저장 (정규화된 주소로)
+    cache_key = f"{cache_version}_{cafe_name}_{normalize_address(cafe_address)}"
     if len(blog_cache) >= MAX_CACHE_SIZE:
         oldest_key = next(iter(blog_cache))
         del blog_cache[oldest_key]
