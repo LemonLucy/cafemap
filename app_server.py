@@ -27,7 +27,7 @@ def get_cafe_image_from_naver(cafe_name):
     params = {"query": cafe_name, "display": 1, "sort": "sim"}
     
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=2)
+        response = requests.get(url, headers=headers, params=params, timeout=5)
         if response.status_code == 200:
             data = response.json()
             if data['items']:
@@ -135,7 +135,7 @@ def analyze_blog_content(cafe_name, cafe_address):
     params = {"query": query, "display": 100, "sort": "sim"}  # 30 → 50으로 증가
     
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=3)
+        response = requests.get(url, headers=headers, params=params, timeout=10)  # 3초 → 10초로 증가
         if response.status_code != 200:
             return get_empty_result()
             
