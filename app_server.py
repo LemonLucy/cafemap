@@ -551,7 +551,12 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(404)
 
     def do_GET(self):
-        if self.path == '/api/cache-stats':
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok"}).encode('utf-8'))
+        elif self.path == '/api/cache-stats':
             stats = get_cache_stats()
             self.send_response(200)
             self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
