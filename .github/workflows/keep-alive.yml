@@ -1,0 +1,14 @@
+name: Keep Railway Server Alive
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # 5분마다 실행
+  workflow_dispatch:  # 수동 실행 가능
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Railway Server
+        run: |
+          curl -f https://web-production-c8796.up.railway.app/health || exit 0
