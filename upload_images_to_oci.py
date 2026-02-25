@@ -65,12 +65,22 @@ def download_and_upload_blog_images(blog_url, cafe_name, max_images=5):
             safe_cafe_name = hashlib.md5(cafe_name.encode()).hexdigest()[:8]
             object_name = f"cafes/{safe_cafe_name}/{url_hash}{ext}"
             
+            # Content-Type 결정
+            content_type = 'image/jpeg'
+            if ext.lower() in ['.png']:
+                content_type = 'image/png'
+            elif ext.lower() in ['.gif']:
+                content_type = 'image/gif'
+            elif ext.lower() in ['.webp']:
+                content_type = 'image/webp'
+            
             # Object Storage에 업로드
             object_storage.put_object(
                 namespace,
                 bucket_name,
                 object_name,
-                img_response.content
+                img_response.content,
+                content_type=content_type
             )
             
             # Public URL 생성 (URL 인코딩 없이)
