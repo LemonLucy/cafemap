@@ -27,6 +27,7 @@ def init_cache_db():
                     region VARCHAR(100),
                     cache_version VARCHAR(20),
                     result JSONB NOT NULL,
+                    image_url TEXT,
                     hit_count INTEGER DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -146,6 +147,16 @@ def save_cached_result(cafe_name, cafe_address, cache_version, result):
         oldest_key = next(iter(blog_cache))
         del blog_cache[oldest_key]
     blog_cache[cache_key] = result
+def save_cached_result(cafe_name, cafe_address, cache_version, result, image_url=None):
+    """결과를 캐시에 저장 (이미지 URL 포함)"""
+    from app_server import blog_cache, MAX_CACHE_SIZE
+    
+    # 메모리 캐시에 항상 저장 (정규화된 주소로)
+    cache_key = f"{cache_version}_{cafe_name}_{normalize_address(cafe_address)}"
+    if len(blog_cache) >= MAX_CACHE_SIZE:
+        oldest_key = next(iter(blog_cache))
+        del blog_cache[oldest_key]
+    blog_cache[cache_key] = result
     
     # Postgres 저장 여부 결정
     region = get_region_from_address(cafe_address)
@@ -162,16 +173,17 @@ def save_cached_result(cafe_name, cafe_address, cache_version, result):
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO cafe_cache (cafe_name, cafe_address, region, cache_version, result)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO cafe_cache (cafe_name, cafe_address, region, cache_version, result, image_url)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (cafe_name, cafe_address, cache_version) 
                 DO UPDATE SET 
                     result = EXCLUDED.result,
+                    image_url = EXCLUDED.image_url,
                     hit_count = cafe_cache.hit_count + 1,
                     updated_at = CURRENT_TIMESTAMP
-            """, (cafe_name, cafe_address, region, cache_version, json.dumps(result)))
+            """, (cafe_name, cafe_address, region, cache_version, json.dumps(result), image_url))
             conn.commit()
-            print(f"💾 Cached to Postgres: {cafe_name} ({region})")
+            print(f"💾 Cached to Postgres: {cafe_name} ({region}) [img: {'✓' if image_url else '✗'}]")
     except Exception as e:
         print(f"❌ Cache save error: {e}")
     finally:
