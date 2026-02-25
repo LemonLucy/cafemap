@@ -60,8 +60,10 @@ def download_and_upload_blog_images(blog_url, cafe_name, max_images=5):
             
             # 파일명 생성 (해시 기반)
             url_hash = hashlib.md5(img_url.encode()).hexdigest()
-            ext = os.path.splitext(img_url)[1] or '.jpg'
-            object_name = f"cafes/{cafe_name.replace(' ', '_')}/{url_hash}{ext}"
+            ext = os.path.splitext(img_url)[1].split('?')[0] or '.jpg'
+            # 한글 제거 - 영문과 숫자만 사용
+            safe_cafe_name = hashlib.md5(cafe_name.encode()).hexdigest()[:8]
+            object_name = f"cafes/{safe_cafe_name}/{url_hash}{ext}"
             
             # Object Storage에 업로드
             object_storage.put_object(
@@ -71,7 +73,7 @@ def download_and_upload_blog_images(blog_url, cafe_name, max_images=5):
                 img_response.content
             )
             
-            # Public URL 생성
+            # Public URL 생성 (URL 인코딩 없이)
             public_url = f"https://objectstorage.ap-chuncheon-1.oraclecloud.com/n/{namespace}/b/{bucket_name}/o/{object_name}"
             uploaded_urls.append(public_url)
             
