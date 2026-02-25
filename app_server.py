@@ -40,24 +40,29 @@ def get_blog_image_url(blog_url):
     """블로그에서 첫 번째 이미지 URL만 추출 (다운로드 X)"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
             'Referer': 'https://blog.naver.com/'
         }
         
+        # 모바일 URL을 PC URL로 변환
         if 'm.blog.naver.com' in blog_url:
             blog_url = blog_url.replace('m.blog.naver.com', 'blog.naver.com')
         
-        response = requests.get(blog_url, headers=headers, timeout=3)
+        response = requests.get(blog_url, headers=headers, timeout=5)
         soup = BeautifulSoup(response.text, 'html.parser')
         
+        # iframe 태그에서 실제 주소(src)를 가져옴
         main_frame = soup.find('iframe', id='mainFrame')
         if not main_frame:
             return None
         
         actual_url = "https://blog.naver.com" + main_frame['src']
-        res = requests.get(actual_url, headers=headers, timeout=3)
+        
+        # 실제 본문 페이지 접속
+        res = requests.get(actual_url, headers=headers, timeout=5)
         content_soup = BeautifulSoup(res.text, 'html.parser')
         
+        # 이미지 태그 찾기 (주소 패턴으로 찾아 구버전 호환)
         img_tags = content_soup.select('img[src*="postfiles.pstatic.net"]')
         if not img_tags:
             return None
@@ -65,8 +70,13 @@ def get_blog_image_url(blog_url):
         # 첫 번째 이미지 URL 반환
         img = img_tags[0]
         img_url = img.get('data-lazy-src') or img.get('src')
+        
+        # URL 정리 (쿼리 파라미터 제거)
+        if img_url:
+            img_url = img_url.split('?')[0]
+        
         return img_url
-    except:
+    except Exception as e:
         return None
 
 def search_naver_blog(query, display=5):
