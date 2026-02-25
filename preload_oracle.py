@@ -54,8 +54,11 @@ def preload_cafe(query, region):
         # 이미지 URL 추출
         image_url = None
         blogs = result.get('blogs', [])
+        print(f"  📊 블로그 개수: {len(blogs)}")
+        
         if blogs:
             first_blog = blogs[0]
+            print(f"  📝 첫 블로그 키: {list(first_blog.keys())}")
             blog_link = first_blog.get('url')  # 'url' 키 사용
             if blog_link:
                 print(f"  📷 이미지 추출 중... ({blog_link[:50]}...)")
@@ -64,6 +67,8 @@ def preload_cafe(query, region):
                     print(f"  ✅ 이미지: {image_url[:60]}...")
                 else:
                     print(f"  ⚠️  이미지 추출 실패")
+        else:
+            print(f"  ⚠️  블로그 데이터 없음")
         
         # DB에 저장
         save_cached_result(cafe_name, cafe_address, CACHE_VERSION, result, image_url)
