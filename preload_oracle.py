@@ -5,13 +5,14 @@
 import os
 import sys
 import time
-from app_server import search_naver_blog, get_blog_image_url
-from cache_db import init_cache_db, save_cached_result
 
-# 환경변수 설정
-os.environ['DATABASE_URL'] = 'postgresql://cafemap:CafeMap2026!@#@localhost:5432/cafemap'
+# 환경변수 먼저 설정
+os.environ['DATABASE_URL'] = 'postgresql://cafemap:CafeMap2026Pass@localhost:5432/cafemap'
 os.environ['NAVER_CLIENT_ID'] = 'tr30Ch1tbJBqwNlv9svx'
 os.environ['NAVER_CLIENT_SECRET'] = 'fsrn1wXmk3'
+
+from app_server import get_blog_image_url
+from cache_db import init_cache_db, save_cached_result
 
 CACHE_VERSION = "v18"
 
