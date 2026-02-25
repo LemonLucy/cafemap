@@ -50,8 +50,10 @@ def download_and_upload_blog_images(blog_url, cafe_name, max_images=5):
             if not img_url:
                 continue
             
-            # URL 정리
-            img_url = img_url.split('?')[0]
+            # URL 정리 및 고화질로 변경
+            base_url = img_url.split('?')[0]
+            # 네이버는 type=w966이 최대 크기
+            img_url = base_url + '?type=w966'
             
             # 이미지 다운로드
             img_response = requests.get(img_url, headers=headers, timeout=10)

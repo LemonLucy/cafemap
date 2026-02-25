@@ -71,9 +71,11 @@ def get_blog_image_url(blog_url):
         img = img_tags[0]
         img_url = img.get('data-lazy-src') or img.get('src')
         
-        # URL 정리 (쿼리 파라미터 제거)
+        # URL 정리 및 고화질로 변경
         if img_url:
-            img_url = img_url.split('?')[0]
+            base_url = img_url.split('?')[0]
+            # 네이버는 type=w966이 최대 크기
+            img_url = base_url + '?type=w966'
         
         return img_url
     except Exception as e:
