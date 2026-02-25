@@ -40,19 +40,23 @@ def preload_cafe(query, region):
     print(f"\n🔍 검색: {query} {region}")
     
     try:
-        result = search_naver_blog(f"{query} {region} 카공")
-        if not result or 'error' in result:
-            print(f"  ❌ 검색 실패")
+        # analyze_blog_content 함수 사용 (전체 분석 결과 반환)
+        from app_server import analyze_blog_content
+        
+        result = analyze_blog_content(query, region)
+        if not result or result.get('totalScore', 0) == 0:
+            print(f"  ❌ 검색 실패 또는 결과 없음")
             return False
         
         cafe_name = result.get('cafeName', query)
-        cafe_address = result.get('address', f'{region}')
+        cafe_address = result.get('address', region)
         
         # 이미지 URL 추출
         image_url = None
-        if result.get('blogs'):
-            first_blog = result['blogs'][0]
-            blog_link = first_blog.get('link')
+        blogs = result.get('blogs', [])
+        if blogs:
+            first_blog = blogs[0]
+            blog_link = first_blog.get('url')
             if blog_link:
                 print(f"  📷 이미지 추출 중...")
                 image_url = get_blog_image_url(blog_link)
@@ -68,6 +72,8 @@ def preload_cafe(query, region):
         
     except Exception as e:
         print(f"  ❌ 오류: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def main():
