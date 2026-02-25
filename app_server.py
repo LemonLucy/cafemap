@@ -461,8 +461,19 @@ def analyze_blog_content(cafe_name, cafe_address):
             "blogItems": filtered_items,
             "description": cafe_description,
             "keywords": keywords,
-            "totalScore": round(total_score, 1) if len(filtered_urls) > 0 else 0
+            "totalScore": round(total_score, 1) if len(filtered_urls) > 0 else 0,
+            "images": []  # 이미지 URL 배열
         }
+        
+        # 테스트: 스태그커피 안양이면 이미지 추가
+        if "스태그" in cafe_name and "안양" in cafe_address:
+            result["images"] = [
+                "https://objectstorage.ap-chuncheon-1.oraclecloud.com/n/ax91qzradksx/b/cafemap-images/o/cafes/e4baaa35/37f61cd7d720d96effe01ab52d53593d.JPG",
+                "https://objectstorage.ap-chuncheon-1.oraclecloud.com/n/ax91qzradksx/b/cafemap-images/o/cafes/e4baaa35/7ceb2f5b5331f27b45f4ba308e5c7ebd.jpg",
+                "https://objectstorage.ap-chuncheon-1.oraclecloud.com/n/ax91qzradksx/b/cafemap-images/o/cafes/e4baaa35/857bdb4d12d52193bccf897a5d6feffb.jpg",
+                "https://objectstorage.ap-chuncheon-1.oraclecloud.com/n/ax91qzradksx/b/cafemap-images/o/cafes/e4baaa35/556bddd18d9e4bcab5916d76488816e6.jpg",
+                "https://objectstorage.ap-chuncheon-1.oraclecloud.com/n/ax91qzradksx/b/cafemap-images/o/cafes/e4baaa35/a3eeda6657802c2980a3c6d065a45d97.jpg"
+            ]
         
         # 캐시에 저장 (Postgres + 메모리)
         save_cached_result(cafe_name, cafe_address, CACHE_VERSION, result)
