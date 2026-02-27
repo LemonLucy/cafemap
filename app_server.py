@@ -8,6 +8,8 @@ import sys
 import requests
 from bs4 import BeautifulSoup
 from cache_db import init_cache_db, get_cached_result, save_cached_result, get_cache_stats
+from datetime import datetime
+from collections import defaultdict
 
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "tr30Ch1tbJBqwNlv9svx")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "fsrn1wXmk3")
@@ -16,6 +18,15 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "fsrn1wXmk3")
 blog_cache = {}
 CACHE_VERSION = "v18"  # 캐시 버전 (일반 단어는 지역명 필수)
 MAX_CACHE_SIZE = 100  # 최대 캐시 항목 수
+
+# 접속 통계
+access_stats = {
+    'total_requests': 0,
+    'api_requests': 0,
+    'unique_ips': set(),
+    'requests_by_hour': defaultdict(int),
+    'last_requests': []  # 최근 10개 요청
+}
 
 def get_cafe_image_from_naver(cafe_name):
     """네이버 이미지 검색 API로 카페 이미지 가져오기"""
@@ -503,6 +514,26 @@ def get_empty_result():
     }
 
 class Handler(SimpleHTTPRequestHandler):
+    def log_request_stats(self):
+        """요청 통계 기록"""
+        client_ip = self.client_address[0]
+        now = datetime.now()
+        
+        access_stats['total_requests'] += 1
+        access_stats['unique_ips'].add(client_ip)
+        access_stats['requests_by_hour'][now.strftime('%Y-%m-%d %H:00')] += 1
+        
+        # 최근 요청 기록 (최대 50개)
+        request_info = {
+            'time': now.strftime('%Y-%m-%d %H:%M:%S'),
+            'ip': client_ip,
+            'path': self.path,
+            'method': self.command
+        }
+        access_stats['last_requests'].insert(0, request_info)
+        if len(access_stats['last_requests']) > 50:
+            access_stats['last_requests'] = access_stats['last_requests'][:50]
+    
     def end_headers(self):
         # CORS 헤더는 각 메서드에서 개별 설정하므로 여기서는 추가하지 않음
         SimpleHTTPRequestHandler.end_headers(self)
@@ -517,7 +548,10 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        self.log_request_stats()  # 통계 기록
+        
         if self.path == '/api/blog-search':
+            access_stats['api_requests'] += 1  # API 요청 카운트
             try:
                 content_length = int(self.headers.get('Content-Length', 0))
                 if content_length == 0:
@@ -574,6 +608,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(404)
 
     def do_GET(self):
+        self.log_request_stats()  # 통계 기록
+        
         if self.path == '/health':
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -586,6 +622,20 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps(stats, ensure_ascii=False).encode('utf-8'))
+        elif self.path == '/api/access-stats':
+            # 접속 통계 API
+            stats_data = {
+                'total_requests': access_stats['total_requests'],
+                'api_requests': access_stats['api_requests'],
+                'unique_visitors': len(access_stats['unique_ips']),
+                'requests_by_hour': dict(sorted(access_stats['requests_by_hour'].items(), reverse=True)[:24]),
+                'last_requests': access_stats['last_requests'][:10]
+            }
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(stats_data, ensure_ascii=False).encode('utf-8'))
         elif self.path == '/':
             self.path = '/index.html'
             return SimpleHTTPRequestHandler.do_GET(self)
