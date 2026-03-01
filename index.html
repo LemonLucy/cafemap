@@ -344,6 +344,11 @@
             display: block;
         }
         
+        .marker-icon.liked::before {
+            content: '❤️';
+            font-size: 24px;
+        }
+        
         .marker-icon.green::before { color: #4CAF50; }
         .marker-icon.yellow::before { color: #FFC107; }
         .marker-icon.red::before { color: #F44336; }
@@ -351,6 +356,10 @@
         
         .marker-icon.active::before {
             color: white;
+        }
+        
+        .marker-icon.liked.active::before {
+            content: '❤️';
         }
         
         .marker-score {
@@ -435,6 +444,7 @@
         let map, allCafes = [], markers = [], activeMarkerIdx = null;
         let currentSort = 'score-high';
         let userLocation = null;
+        let userLikes = new Set(); // 사용자가 좋아요한 카페 ID 목록
         
         // 검색 초기화
         function clearSearch() {
@@ -620,6 +630,7 @@
             
             kakao.maps.event.addListener(map, 'idle', searchCafes);
             searchCafes();
+            loadUserLikes(); // 좋아요 목록 로드
         }
         
         function searchCafes() {
@@ -839,7 +850,16 @@
         }
         
         function showModal(cafe, data) {
-            let html = '<h2 style="margin-bottom:20px;">' + cafe.name + '</h2>';
+            const isLiked = userLikes.has(cafe.name);
+            const likeIcon = isLiked ? '❤️' : '🤍';
+            
+            let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
+            html += '<h2 style="margin:0;">' + cafe.name + '</h2>';
+            html += '<button onclick="toggleLike(\'' + cafe.name.replace(/'/g, "\\'") + '\',\'' + 
+                    cafe.address.replace(/'/g, "\\'") + '\',' + cafe.latitude + ',' + cafe.longitude + 
+                    ');event.stopPropagation();" style="background:none;border:none;font-size:32px;cursor:pointer;padding:0;line-height:1;" title="좋아요">' + 
+                    likeIcon + '</button>';
+            html += '</div>';
             
             // 카공 지표 카드
             html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:20px 0;">';
@@ -903,6 +923,9 @@
                 html += '</div></div>';
             }
             
+            // 사용자 리뷰
+            html += '<div id="user-reviews-' + data.name + '" style="margin-top:20px;"></div>';
+            
             // 블로그 리뷰
             if (data.blogItems && data.blogItems.length > 0) {
                 html += '<div style="margin-top:20px;"><h3 style="font-size:14px;margin-bottom:10px;">📝 블로그 리뷰 (' + data.blogItems.length + ')</h3>';
@@ -931,6 +954,9 @@
                 if (e.target === modal) modal.remove(); 
             };
             document.body.appendChild(modal);
+            
+            // 사용자 리뷰 로드
+            loadUserReviews(data.name);
         }
         
         function displayMarkers(cafes) {
@@ -982,12 +1008,18 @@
             if (markerIcon && data) {
                 const oldColor = markerIcon.className.split(' ')[1];
                 const newColor = data.signalColor || 'gray';
+                const cafe = allCafes[idx];
                 
                 // 0.0점이면 no-score 클래스 추가
                 if (data.totalScore === 0) {
                     markerIcon.className = 'marker-icon no-score';
                 } else {
                     markerIcon.className = 'marker-icon ' + newColor;
+                }
+                
+                // 좋아요 상태 반영
+                if (cafe && userLikes.has(cafe.name)) {
+                    markerIcon.classList.add('liked');
                 }
                 
                 // z-index 업데이트
@@ -1130,6 +1162,223 @@
                     '<div class="cafe-indicators">' + indicatorsHtml + '</div>' +
                     '</div>';
             }).join('');
+        }
+        
+        // 좋아요 목록 로드
+        async function loadUserLikes() {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+            
+            try {
+                const response = await fetch('/api/likes/my', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    userLikes = new Set(data.likes.map(like => like.cafe_name));
+                    updateAllMarkers();
+                }
+            } catch (err) {
+                console.log('좋아요 목록 로드 실패:', err);
+            }
+        }
+        
+        // 좋아요 토글
+        async function toggleLike(cafeName, cafeAddress, cafeLat, cafeLng) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('로그인이 필요합니다');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/likes/toggle', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({
+                        cafe_id: cafeName,
+                        cafe_name: cafeName,
+                        cafe_address: cafeAddress,
+                        cafe_lat: cafeLat,
+                        cafe_lng: cafeLng
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.liked) {
+                        userLikes.add(cafeName);
+                    } else {
+                        userLikes.delete(cafeName);
+                    }
+                    updateAllMarkers();
+                    
+                    // 모달이 열려있으면 다시 렌더링
+                    const cafe = allCafes.find(c => c.name === cafeName);
+                    if (cafe && cafe.detailData) {
+                        document.querySelectorAll('[style*="position:fixed"]').forEach(el => el.remove());
+                        showModal(cafe, cafe.detailData);
+                    }
+                }
+            } catch (err) {
+                console.log('좋아요 토글 실패:', err);
+            }
+        }
+        
+        // 모든 마커 업데이트
+        function updateAllMarkers() {
+            allCafes.forEach((cafe, idx) => {
+                const markerIcon = document.getElementById('marker-' + idx);
+                if (markerIcon) {
+                    if (userLikes.has(cafe.name)) {
+                        markerIcon.classList.add('liked');
+                    } else {
+                        markerIcon.classList.remove('liked');
+                    }
+                }
+            });
+        }
+        
+        // 사용자 리뷰 로드
+        async function loadUserReviews(cafeId) {
+            const container = document.getElementById('user-reviews-' + cafeId);
+            if (!container) return;
+            
+            try {
+                const response = await fetch('/api/reviews/cafe/' + encodeURIComponent(cafeId));
+                const reviews = await response.json();
+                const token = localStorage.getItem('token');
+                const user = token ? JSON.parse(localStorage.getItem('user') || '{}') : null;
+                
+                let html = '<div style="border-top:1px solid #e0e0e0;padding-top:20px;"><h3 style="font-size:14px;margin-bottom:10px;">💬 사용자 리뷰 (' + reviews.length + ')</h3>';
+                
+                if (token) {
+                    html += '<button onclick="showReviewForm(\'' + cafeId + '\')" style="width:100%;padding:10px;background:#4CAF50;color:white;border:none;border-radius:6px;cursor:pointer;margin-bottom:15px;">리뷰 작성</button>';
+                }
+                
+                reviews.forEach(r => {
+                    const isOwner = user && user.user_id === r.user_id;
+                    html += '<div style="padding:12px;margin:8px 0;background:#f9f9f9;border-radius:8px;">' +
+                        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+                        '<div><span style="font-weight:600;font-size:13px;">' + r.nickname + '</span> ' +
+                        '<span style="color:#FFB300;">' + '★'.repeat(r.rating) + '☆'.repeat(5-r.rating) + '</span></div>' +
+                        '<span style="font-size:11px;color:#999;">' + new Date(r.created_at).toLocaleDateString() + '</span>' +
+                        '</div>' +
+                        '<div style="font-size:13px;color:#333;line-height:1.5;">' + r.content + '</div>';
+                    
+                    if (isOwner) {
+                        html += '<div style="margin-top:8px;display:flex;gap:8px;">' +
+                            '<button onclick="editReview(' + r.id + ',\'' + cafeId + '\',' + r.rating + ',\'' + r.content.replace(/'/g, "\\'") + '\')" style="padding:4px 12px;background:#2196F3;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">수정</button>' +
+                            '<button onclick="deleteReview(' + r.id + ',\'' + cafeId + '\')" style="padding:4px 12px;background:#f44336;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">삭제</button>' +
+                            '</div>';
+                    }
+                    
+                    html += '</div>';
+                });
+                
+                if (reviews.length === 0) {
+                    html += '<div style="text-align:center;padding:20px;color:#999;">첫 리뷰를 작성해보세요!</div>';
+                }
+                
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (err) {
+                console.log('리뷰 로드 실패:', err);
+            }
+        }
+        
+        // 리뷰 작성 폼
+        function showReviewForm(cafeId, editId = null, editRating = 5, editContent = '') {
+            const formHtml = '<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+                '<div style="background:white;max-width:500px;width:100%;border-radius:12px;padding:30px;">' +
+                '<h3 style="margin-bottom:20px;">' + (editId ? '리뷰 수정' : '리뷰 작성') + '</h3>' +
+                '<div style="margin-bottom:15px;">' +
+                '<label style="display:block;margin-bottom:8px;font-weight:600;">평점</label>' +
+                '<select id="review-rating" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;">' +
+                '<option value="5"' + (editRating === 5 ? ' selected' : '') + '>⭐⭐⭐⭐⭐ 최고예요</option>' +
+                '<option value="4"' + (editRating === 4 ? ' selected' : '') + '>⭐⭐⭐⭐ 좋아요</option>' +
+                '<option value="3"' + (editRating === 3 ? ' selected' : '') + '>⭐⭐⭐ 보통이에요</option>' +
+                '<option value="2"' + (editRating === 2 ? ' selected' : '') + '>⭐⭐ 별로예요</option>' +
+                '<option value="1"' + (editRating === 1 ? ' selected' : '') + '>⭐ 최악이에요</option>' +
+                '</select></div>' +
+                '<div style="margin-bottom:15px;">' +
+                '<label style="display:block;margin-bottom:8px;font-weight:600;">내용</label>' +
+                '<textarea id="review-content" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;min-height:100px;resize:vertical;">' + editContent + '</textarea>' +
+                '</div>' +
+                '<div style="display:flex;gap:10px;">' +
+                '<button onclick="submitReview(\'' + cafeId + '\',' + editId + ')" style="flex:1;padding:12px;background:#4CAF50;color:white;border:none;border-radius:6px;cursor:pointer;">저장</button>' +
+                '<button onclick="this.closest(\'[style*=\\\'position:fixed\\\']\').remove()" style="flex:1;padding:12px;background:#999;color:white;border:none;border-radius:6px;cursor:pointer;">취소</button>' +
+                '</div></div></div>';
+            
+            document.body.insertAdjacentHTML('beforeend', formHtml);
+        }
+        
+        // 리뷰 제출
+        async function submitReview(cafeId, editId = null) {
+            const rating = document.getElementById('review-rating').value;
+            const content = document.getElementById('review-content').value.trim();
+            const token = localStorage.getItem('token');
+            
+            if (!content) {
+                alert('리뷰 내용을 입력해주세요');
+                return;
+            }
+            
+            try {
+                const url = editId ? '/api/reviews/update/' + editId : '/api/reviews/add';
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({
+                        cafe_id: cafeId,
+                        rating: parseInt(rating),
+                        content: content
+                    })
+                });
+                
+                if (response.ok) {
+                    document.querySelectorAll('[style*="z-index:3000"]').forEach(el => el.remove());
+                    loadUserReviews(cafeId);
+                } else {
+                    alert('리뷰 저장 실패');
+                }
+            } catch (err) {
+                alert('리뷰 저장 실패: ' + err.message);
+            }
+        }
+        
+        // 리뷰 수정
+        function editReview(reviewId, cafeId, rating, content) {
+            showReviewForm(cafeId, reviewId, rating, content);
+        }
+        
+        // 리뷰 삭제
+        async function deleteReview(reviewId, cafeId) {
+            if (!confirm('리뷰를 삭제하시겠습니까?')) return;
+            
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch('/api/reviews/delete/' + reviewId, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    }
+                });
+                
+                if (response.ok) {
+                    loadUserReviews(cafeId);
+                } else {
+                    alert('리뷰 삭제 실패');
+                }
+            } catch (err) {
+                alert('리뷰 삭제 실패: ' + err.message);
+            }
         }
     </script>
 </body>
