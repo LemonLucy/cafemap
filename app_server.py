@@ -10,6 +10,16 @@ from bs4 import BeautifulSoup
 from cache_db import init_cache_db, get_cached_result, save_cached_result, get_cache_stats
 from datetime import datetime
 from collections import defaultdict
+import secrets
+
+try:
+    from user_db import (create_user, verify_user, add_review, get_cafe_reviews, 
+                         get_user_reviews, toggle_like, get_user_likes, get_cafe_like_count,
+                         create_session, get_session, delete_session, cleanup_expired_sessions,
+                         update_review, delete_review)
+    USER_DB_ENABLED = True
+except:
+    USER_DB_ENABLED = False
 
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "tr30Ch1tbJBqwNlv9svx")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "fsrn1wXmk3")
@@ -597,6 +607,204 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok", "message": "Cache cleared"}).encode('utf-8'))
+        
+        # 사용자 인증 API
+        elif self.path == '/api/auth/signup' and USER_DB_ENABLED:
+            try:
+                content_length = int(self.headers.get('Content-Length', 0))
+                data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+                user_id = create_user(data['email'], data['password'], data['nickname'])
+                token = secrets.token_urlsafe(32)
+                create_session(token, user_id, data['email'], data['nickname'])
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "token": token, 
+                    "user": {"user_id": user_id, "email": data['email'], "nickname": data['nickname']}
+                }).encode('utf-8'))
+            except Exception as e:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        
+        elif self.path == '/api/auth/login' and USER_DB_ENABLED:
+            try:
+                content_length = int(self.headers.get('Content-Length', 0))
+                data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+                user = verify_user(data['email'], data['password'])
+                if user:
+                    token = secrets.token_urlsafe(32)
+                    create_session(token, user['id'], user['email'], user['nickname'])
+                    self.send_response(200)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "token": token, 
+                        "user": {"user_id": user['id'], "email": user['email'], "nickname": user['nickname']}
+                    }).encode('utf-8'))
+                else:
+                    self.send_response(401)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Invalid credentials"}).encode('utf-8'))
+            except Exception as e:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        
+        elif self.path == '/api/auth/logout' and USER_DB_ENABLED:
+            try:
+                token = self.headers.get('Authorization', '').replace('Bearer ', '')
+                if token:
+                    delete_session(token)
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
+            except Exception as e:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        
+        # 리뷰 API
+        elif self.path == '/api/reviews/add' and USER_DB_ENABLED:
+            try:
+                token = self.headers.get('Authorization', '').replace('Bearer ', '')
+                session = get_session(token) if token else None
+                if not session:
+                    self.send_response(401)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Unauthorized"}).encode('utf-8'))
+                    return
+                
+                content_length = int(self.headers.get('Content-Length', 0))
+                data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+                user_id = session['user_id']
+                review_id = add_review(user_id, data['cafe_id'], data['rating'], data['content'])
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"review_id": review_id}).encode('utf-8'))
+            except Exception as e:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        
+        elif self.path.startswith('/api/reviews/update/') and USER_DB_ENABLED:
+            try:
+                review_id = int(self.path.split('/')[-1])
+                token = self.headers.get('Authorization', '').replace('Bearer ', '')
+                session = get_session(token) if token else None
+                if not session:
+                    self.send_response(401)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Unauthorized"}).encode('utf-8'))
+                    return
+                
+                content_length = int(self.headers.get('Content-Length', 0))
+                data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+                user_id = session['user_id']
+                updated = update_review(review_id, user_id, data['rating'], data['content'])
+                if updated:
+                    self.send_response(200)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
+                else:
+                    self.send_response(403)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Forbidden"}).encode('utf-8'))
+            except Exception as e:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        
+        elif self.path.startswith('/api/reviews/delete/') and USER_DB_ENABLED:
+            try:
+                review_id = int(self.path.split('/')[-1])
+                token = self.headers.get('Authorization', '').replace('Bearer ', '')
+                session = get_session(token) if token else None
+                if not session:
+                    self.send_response(401)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Unauthorized"}).encode('utf-8'))
+                    return
+                
+                user_id = session['user_id']
+                deleted = delete_review(review_id, user_id)
+                if deleted:
+                    self.send_response(200)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
+                else:
+                    self.send_response(403)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Forbidden"}).encode('utf-8'))
+            except Exception as e:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        
+        # 좋아요 토글 API
+        elif self.path == '/api/likes/toggle' and USER_DB_ENABLED:
+            try:
+                token = self.headers.get('Authorization', '').replace('Bearer ', '')
+                session = get_session(token) if token else None
+                if not session:
+                    self.send_response(401)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Unauthorized"}).encode('utf-8'))
+                    return
+                
+                content_length = int(self.headers.get('Content-Length', 0))
+                data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+                user_id = session['user_id']
+                liked = toggle_like(user_id, data['cafe_id'])
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"liked": liked}).encode('utf-8'))
+            except Exception as e:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        
         elif self.path == '/api/cache-stats':
             stats = get_cache_stats()
             self.send_response(200)
@@ -615,6 +823,51 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok"}).encode('utf-8'))
+        
+        # 카페 리뷰 조회
+        elif self.path.startswith('/api/reviews/cafe/') and USER_DB_ENABLED:
+            try:
+                cafe_id = int(self.path.split('/')[-1])
+                reviews = get_cafe_reviews(cafe_id)
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(reviews, ensure_ascii=False, default=str).encode('utf-8'))
+            except Exception as e:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        
+        # 사용자 좋아요 목록 조회
+        elif self.path == '/api/likes/my' and USER_DB_ENABLED:
+            try:
+                token = self.headers.get('Authorization', '').replace('Bearer ', '')
+                session = get_session(token) if token else None
+                if not session:
+                    self.send_response(401)
+                    self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Unauthorized"}).encode('utf-8'))
+                    return
+                
+                user_id = session['user_id']
+                likes = get_user_likes(user_id)
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"cafe_ids": likes}).encode('utf-8'))
+            except Exception as e:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', 'https://cagongmap.vercel.app')
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        
         elif self.path == '/api/cache-stats':
             stats = get_cache_stats()
             self.send_response(200)
@@ -648,5 +901,13 @@ if __name__ == '__main__':
     
     # 캐시 DB 초기화
     init_cache_db()
+    
+    # 만료된 세션 정리
+    if USER_DB_ENABLED:
+        try:
+            cleanup_expired_sessions()
+            print("✅ Expired sessions cleaned up")
+        except:
+            pass
     
     HTTPServer(('0.0.0.0', port), Handler).serve_forever()
