@@ -1256,7 +1256,7 @@
                 let html = '<div style="border-top:1px solid #e0e0e0;padding-top:20px;"><h3 style="font-size:14px;margin-bottom:10px;">💬 사용자 리뷰 (' + reviews.length + ')</h3>';
                 
                 if (token) {
-                    html += '<button onclick="showReviewForm(\'' + cafeId + '\')" style="width:100%;padding:10px;background:#4CAF50;color:white;border:none;border-radius:6px;cursor:pointer;margin-bottom:15px;">리뷰 작성</button>';
+                    html += '<button onclick="showReviewForm(this.dataset.cafe)" data-cafe="' + cafeId.replace(/"/g, '&quot;') + '" style="width:100%;padding:10px;background:#4CAF50;color:white;border:none;border-radius:6px;cursor:pointer;margin-bottom:15px;">리뷰 작성</button>';
                 }
                 
                 reviews.forEach(r => {
@@ -1271,8 +1271,8 @@
                     
                     if (isOwner) {
                         html += '<div style="margin-top:8px;display:flex;gap:8px;">' +
-                            '<button onclick="editReview(' + r.id + ',\'' + cafeId + '\',' + r.rating + ',\'' + r.content.replace(/'/g, "\\'") + '\')" style="padding:4px 12px;background:#2196F3;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">수정</button>' +
-                            '<button onclick="deleteReview(' + r.id + ',\'' + cafeId + '\')" style="padding:4px 12px;background:#f44336;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">삭제</button>' +
+                            '<button onclick="editReview(' + r.id + ',this.dataset.cafe,' + r.rating + ',this.dataset.content)" data-cafe="' + cafeId.replace(/"/g, '&quot;') + '" data-content="' + r.content.replace(/"/g, '&quot;') + '" style="padding:4px 12px;background:#2196F3;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">수정</button>' +
+                            '<button onclick="deleteReview(' + r.id + ',this.dataset.cafe)" data-cafe="' + cafeId.replace(/"/g, '&quot;') + '" style="padding:4px 12px;background:#f44336;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">삭제</button>' +
                             '</div>';
                     }
                     
